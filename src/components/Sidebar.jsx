@@ -9,7 +9,11 @@ export default function Sidebar() {
   const nav = useNavigate();
   const items = roleMenu[user.role] || [];
 
-  const initials = user.name.split(' ').map((s) => s[0]).slice(0, 2).join('');
+  const initials = user.name
+    .split(' ')
+    .map((s) => s[0])
+    .slice(0, 2)
+    .join('');
 
   return (
     <aside className="sidebar">
@@ -18,8 +22,8 @@ export default function Sidebar() {
           <Icon name="shield" size={22} />
         </div>
         <div className="sidebar-brand-text">
-          <b>Xavfli chiqindilar</b>
-          <span>Yagona platforma</span>
+          <b>Ijro intizomi</b>
+          <span>Idoralararo hujjat aylanish</span>
         </div>
       </div>
 
@@ -29,7 +33,9 @@ export default function Sidebar() {
             key={it.to}
             to={it.to}
             end={it.to === '/'}
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            className={({ isActive }) =>
+              `nav-item ${isActive ? 'active' : ''}`
+            }
           >
             <span className="nav-icon">
               <Icon name={it.icon} size={19} />

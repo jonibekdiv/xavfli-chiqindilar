@@ -4,13 +4,14 @@
 export const REGIONS = [
   'Toshkent shahri', 'Toshkent viloyati', 'Samarqand', 'Buxoro',
   'Farg‘ona', 'Andijon', 'Namangan', 'Qashqadaryo', 'Surxondaryo',
-  'Jizzax', 'Sirdaryo', 'Navoiy', 'Xorazm', 'Qoraqalpog‘iston'
+  'Jizzax', 'Sirdaryo', 'Navoiy', 'Xorazm', 'Qoraqalpog‘iston',
 ];
 
 // ============ CHIQINDI TURLARI ============
 export const WASTE_TYPES = [
-  'Ishlatilgan moy', 'Batareya', 'Kimyoviy chiqindi', 'Lyuminestsent lampa',
-  'Tibbiy chiqindi', 'Elektr jihozlar', 'Bo‘yoq qoldiqlari', 'Pestitsidlar'
+  'Ishlatilgan moy', 'Batareya', 'Kimyoviy chiqindi',
+  'Lyuminestsent lampa', 'Tibbiy chiqindi', 'Elektr jihozlar',
+  'Bo‘yoq qoldiqlari', 'Pestitsidlar',
 ];
 
 // ============ XAVFLILIK SINFLARI ============
@@ -26,27 +27,31 @@ export const WASTE_STATUS = ['Faol', 'Nofaol'];
 export const DEMO_USERS = [
   {
     id: 'u1', login: 'korxona', password: '123456',
-    name: 'Aziz Karimov', role: 'company', roleLabel: 'Korxona mas’ul xodimi',
-    organization: 'ABC MChJ', stir: '123456789', region: 'Toshkent shahri',
-    status: 'active',
+    name: 'Aziz Karimov', role: 'company',
+    roleLabel: 'Korxona mas’ul xodimi',
+    organization: 'ABC MChJ', stir: '123456789',
+    region: 'Toshkent shahri', status: 'active',
   },
   {
     id: 'u2', login: 'mintaqa', password: '123456',
-    name: 'Dilshod Rahimov', role: 'regional', roleLabel: 'Mintaqaviy boshqarma xodimi',
-    organization: 'Toshkent mintaqaviy boshqarma', region: 'Toshkent shahri',
-    status: 'active',
+    name: 'Dilshod Rahimov', role: 'regional',
+    roleLabel: 'Mintaqaviy boshqarma xodimi',
+    organization: 'Toshkent mintaqaviy boshqarma',
+    region: 'Toshkent shahri', status: 'active',
   },
   {
     id: 'u3', login: 'direksiya', password: '123456',
-    name: 'O. Hazratqulov', role: 'directorate', roleLabel: 'Direksiya mutaxassisi',
-    organization: 'Xavfli chiqindilarni boshqarish direksiyasi', region: 'Toshkent shahri',
-    status: 'active',
+    name: 'O. Hazratqulov', role: 'directorate',
+    roleLabel: 'Direksiya mutaxassisi',
+    organization: 'Xavfli chiqindilarni boshqarish direksiyasi',
+    region: 'Toshkent shahri', status: 'active',
   },
   {
     id: 'u4', login: 'admin', password: '123456',
-    name: 'Sardor Adminov', role: 'admin', roleLabel: 'Tizim administratori',
-    organization: 'Direksiya IT', region: 'Toshkent shahri',
-    status: 'active',
+    name: 'Sardor Adminov', role: 'admin',
+    roleLabel: 'Tizim administratori',
+    organization: 'Direksiya IT',
+    region: 'Toshkent shahri', status: 'active',
   },
 ];
 
@@ -135,18 +140,21 @@ export const roleMenu = {
     { to: '/', icon: 'dashboard', label: 'Dashboard', shortLabel: 'Asosiy' },
     { to: '/regional/reports', icon: 'clipboard', label: 'Hisobotlar', shortLabel: 'Hisobot' },
     { to: '/regional/files', icon: 'paperclip', label: 'Kelgan fayllar', shortLabel: 'Fayllar' },
+    { to: '/documents', icon: 'file', label: 'Hujjatlar', shortLabel: 'Hujjat' },
     { to: '/notifications', icon: 'bell', label: 'Bildirishnomalar', shortLabel: 'Xabar' },
   ],
   directorate: [
     { to: '/', icon: 'dashboard', label: 'Dashboard', shortLabel: 'Asosiy' },
     { to: '/directorate/companies', icon: 'building', label: 'Korxonalar', shortLabel: 'Korxona' },
     { to: '/directorate/files', icon: 'paperclip', label: 'Barcha fayllar', shortLabel: 'Fayllar' },
+    { to: '/documents', icon: 'file', label: 'Hujjatlar', shortLabel: 'Hujjat' },
     { to: '/directorate/analytics', icon: 'chart', label: 'Analitika', shortLabel: 'Analitika' },
     { to: '/notifications', icon: 'bell', label: 'Bildirishnomalar', shortLabel: 'Xabar' },
   ],
   admin: [
     { to: '/', icon: 'dashboard', label: 'Dashboard', shortLabel: 'Asosiy' },
     { to: '/admin', icon: 'settings', label: 'Admin panel', shortLabel: 'Admin' },
+    { to: '/documents', icon: 'file', label: 'Hujjatlar', shortLabel: 'Hujjat' },
     { to: '/notifications', icon: 'bell', label: 'Bildirishnomalar', shortLabel: 'Xabar' },
   ],
 };

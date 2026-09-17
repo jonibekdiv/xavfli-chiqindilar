@@ -8,6 +8,7 @@ import WasteRegistry from './pages/WasteRegistry.jsx';
 import QuarterlyReport from './pages/QuarterlyReport.jsx';
 import AnnualReport from './pages/AnnualReport.jsx';
 import Documents from './pages/Documents.jsx';
+import NewDocument from './pages/NewDocument.jsx';
 import Notifications from './pages/Notifications.jsx';
 import RegionalDashboard from './pages/RegionalDashboard.jsx';
 import RegionalReports from './pages/RegionalReports.jsx';
@@ -39,27 +40,118 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      {/* Korxona */}
+      {/* Bosh sahifa — rolga qarab */}
       <Route path="/" element={<HomeRouter />} />
-      <Route path="/profile" element={<Guard roles={['company']}><CompanyProfile /></Guard>} />
-      <Route path="/wastes" element={<Guard roles={['company']}><WasteRegistry /></Guard>} />
-      <Route path="/quarterly" element={<Guard roles={['company']}><QuarterlyReport /></Guard>} />
-      <Route path="/annual" element={<Guard roles={['company']}><AnnualReport /></Guard>} />
-      <Route path="/documents" element={<Guard roles={['company']}><Documents /></Guard>} />
+
+      {/* ===== KORXONA ===== */}
+      <Route
+        path="/profile"
+        element={
+          <Guard roles={['company']}>
+            <CompanyProfile />
+          </Guard>
+        }
+      />
+      <Route
+        path="/wastes"
+        element={
+          <Guard roles={['company']}>
+            <WasteRegistry />
+          </Guard>
+        }
+      />
+      <Route
+        path="/quarterly"
+        element={
+          <Guard roles={['company']}>
+            <QuarterlyReport />
+          </Guard>
+        }
+      />
+      <Route
+        path="/annual"
+        element={
+          <Guard roles={['company']}>
+            <AnnualReport />
+          </Guard>
+        }
+      />
+
+      {/* ===== HUJJATLAR (umumiy) ===== */}
+     <Route
+  path="/documents"
+  element={
+    <Guard roles={['company', 'regional', 'directorate', 'admin']}>
+      <Documents />
+    </Guard>
+  }
+/>
+<Route
+  path="/documents/new"
+  element={
+    <Guard roles={['company', 'regional', 'directorate']}>
+      <NewDocument />
+    </Guard>
+  }
+/>
+      {/* ===== BILDIRISHNOMALAR (barcha rollar) ===== */}
       <Route path="/notifications" element={<Notifications />} />
 
-      {/* Mintaqaviy */}
-      <Route path="/regional/reports" element={<Guard roles={['regional']}><RegionalReports /></Guard>} />
-      <Route path="/regional/files" element={<Guard roles={['regional']}><RegionalFiles /></Guard>} />
+      {/* ===== MINTAQAVIY ===== */}
+      <Route
+        path="/regional/reports"
+        element={
+          <Guard roles={['regional']}>
+            <RegionalReports />
+          </Guard>
+        }
+      />
+      <Route
+        path="/regional/files"
+        element={
+          <Guard roles={['regional']}>
+            <RegionalFiles />
+          </Guard>
+        }
+      />
 
-      {/* Direksiya */}
-      <Route path="/directorate/companies" element={<Guard roles={['directorate']}><RegionalDashboard /></Guard>} />
-      <Route path="/directorate/files" element={<Guard roles={['directorate']}><DirectorateFiles /></Guard>} />
-      <Route path="/directorate/analytics" element={<Guard roles={['directorate']}><Analytics /></Guard>} />
+      {/* ===== DIREKSIYA ===== */}
+      <Route
+        path="/directorate/companies"
+        element={
+          <Guard roles={['directorate']}>
+            <RegionalDashboard />
+          </Guard>
+        }
+      />
+      <Route
+        path="/directorate/files"
+        element={
+          <Guard roles={['directorate']}>
+            <DirectorateFiles />
+          </Guard>
+        }
+      />
+      <Route
+        path="/directorate/analytics"
+        element={
+          <Guard roles={['directorate']}>
+            <Analytics />
+          </Guard>
+        }
+      />
 
-      {/* Admin */}
-      <Route path="/admin" element={<Guard roles={['admin']}><AdminPanel /></Guard>} />
+      {/* ===== ADMIN ===== */}
+      <Route
+        path="/admin"
+        element={
+          <Guard roles={['admin']}>
+            <AdminPanel />
+          </Guard>
+        }
+      />
 
+      {/* 404 → bosh sahifa */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

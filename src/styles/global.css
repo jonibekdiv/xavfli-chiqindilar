@@ -734,3 +734,23 @@ tbody tr:hover { background: #F8F9FB; }
   background: var(--ios-red);
   animation: dot-pulse 2s infinite;
 }
+/* Dropdown animatsiyasi */
+@keyframes slideUp {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* Modal checkboxlar */
+input[type="checkbox"] {
+  accent-color: #007AFF;
+}
+
+/* Toggle hover */
+label:hover > div {
+  filter: brightness(1.05);
+}
+
+/* Card hover-dropdown */
+.sidebar .btn-primary:active {
+  transform: scale(0.98);
+}

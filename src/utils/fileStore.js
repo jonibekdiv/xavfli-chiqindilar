@@ -73,3 +73,27 @@ export async function appendHistory(id, entry) {
   await saveFile({ ...f, history });
   return true;
 }
+/** Foydalanuvchiga kelgan fayllar (mintaqaviy/direksiya/admin) */
+export async function listIncomingFiles(user) {
+  const all = await listFiles();
+  if (!user) return [];
+
+  if (user.role === 'admin' || user.role === 'directorate') {
+    return all.filter(
+      (f) =>
+        ['submitted', 'approved', 'returned'].includes(f.status) &&
+        f.uploaderId !== user.id
+    );
+  }
+
+  if (user.role === 'regional') {
+    return all.filter(
+      (f) =>
+        f.region === user.region &&
+        ['submitted', 'approved', 'returned'].includes(f.status) &&
+        f.uploaderId !== user.id
+    );
+  }
+
+  return [];
+}
