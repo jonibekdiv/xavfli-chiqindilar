@@ -3,7 +3,8 @@ import Layout from '../components/Layout.jsx';
 import { Badge, Button, Select, Input, Modal } from '../components/UI.jsx';
 import { STATUS_LABELS } from '../data/mockData.js';
 import { exportPDF } from '../utils/pdf.js';
-import { FileDown, Plus } from 'lucide-react';
+import { exportExcel } from '../utils/excel.js';
+import { FileDown, FileSpreadsheet, Plus } from 'lucide-react';
 
 const emptyQ = {
   year: 2026,
@@ -30,10 +31,26 @@ export default function QuarterlyReport() {
       setReports(saved);
     } else {
       const init = [
-        { id: 'q1', year: 2026, quarter: 1, wasteName: 'Ishlatilgan moy', wasteClass: 'II', opening: 10, generated: 20, recycled: 5, neutralized: 3, handedOver: 7, stored: 2, status: 'accepted', submittedAt: '2026-04-10' },
-        { id: 'q2', year: 2026, quarter: 2, wasteName: 'Ishlatilgan moy', wasteClass: 'II', opening: 13, generated: 18, recycled: 6, neutralized: 2, handedOver: 8, stored: 3, status: 'accepted', submittedAt: '2026-07-08' },
-        { id: 'q3', year: 2026, quarter: 3, wasteName: 'Ishlatilgan moy', wasteClass: 'II', opening: 12, generated: 22, recycled: 7, neutralized: 2, handedOver: 6, stored: 4, status: 'under_review', submittedAt: '2026-10-05' },
-        { id: 'q4', year: 2026, quarter: 4, wasteName: 'Ishlatilgan moy', wasteClass: 'II', opening: 15, generated: 0, recycled: 0, neutralized: 0, handedOver: 0, stored: 0, status: 'pending' },
+        {
+          id: 'q1', year: 2026, quarter: 1, wasteName: 'Ishlatilgan moy', wasteClass: 'II',
+          opening: 10, generated: 20, recycled: 5, neutralized: 3, handedOver: 7, stored: 2,
+          status: 'accepted', submittedAt: '2026-04-10',
+        },
+        {
+          id: 'q2', year: 2026, quarter: 2, wasteName: 'Ishlatilgan moy', wasteClass: 'II',
+          opening: 13, generated: 18, recycled: 6, neutralized: 2, handedOver: 8, stored: 3,
+          status: 'accepted', submittedAt: '2026-07-08',
+        },
+        {
+          id: 'q3', year: 2026, quarter: 3, wasteName: 'Ishlatilgan moy', wasteClass: 'II',
+          opening: 12, generated: 22, recycled: 7, neutralized: 2, handedOver: 6, stored: 4,
+          status: 'under_review', submittedAt: '2026-10-05',
+        },
+        {
+          id: 'q4', year: 2026, quarter: 4, wasteName: 'Ishlatilgan moy', wasteClass: 'II',
+          opening: 15, generated: 0, recycled: 0, neutralized: 0, handedOver: 0, stored: 0,
+          status: 'pending',
+        },
       ];
       setReports(init);
       localStorage.setItem('crm_quarterly', JSON.stringify(init));
@@ -124,17 +141,70 @@ export default function QuarterlyReport() {
 
     exportPDF({
       title: 'Choraklik hisobotlar · 2026',
-      subtitle: 'Barcha choraklar bo\'yicha yig\'ma jadval',
+      subtitle: "Barcha choraklar bo'yicha yig'ma jadval",
       columns,
       rows,
       fileName: `Choraklik-hisobot-2026-${new Date().toISOString().slice(0, 10)}.pdf`,
       orientation: 'landscape',
       meta: {
-        'Tashkilot': 'ABC MChJ',
-        'STIR': '123456789',
-        'Hudud': 'Toshkent shahri',
-        'Davr': '2026-yil',
-        'Choraklar': 'Q1 – Q4',
+        Tashkilot: 'ABC MChJ',
+        STIR: '123456789',
+        Hudud: 'Toshkent shahri',
+        Davr: '2026-yil',
+        Choraklar: 'Q1 – Q4',
+      },
+    });
+  };
+
+  // ===== EXCEL EKSPORT =====
+  const handleExportExcel = () => {
+    const columns = [
+      { header: 'Chorak', dataKey: 'quarter' },
+      { header: 'Yil', dataKey: 'year' },
+      { header: 'Chiqindi', dataKey: 'wasteName' },
+      { header: 'Sinf', dataKey: 'wasteClass' },
+      { header: 'Yil boshidagi qoldiq', dataKey: 'opening' },
+      { header: "Hosil bo'lgan", dataKey: 'generated' },
+      { header: 'Qayta ishlangan', dataKey: 'recycled' },
+      { header: 'Zararsizlantirilgan', dataKey: 'neutralized' },
+      { header: 'Topshirilgan', dataKey: 'handedOver' },
+      { header: 'Saqlangan', dataKey: 'stored' },
+      { header: 'Yil oxiri qoldiq', dataKey: 'closing' },
+      { header: 'Holat', dataKey: 'status' },
+    ];
+
+    const rows = reports.map((r) => {
+      const close =
+        Number(r.opening) + Number(r.generated) - Number(r.recycled) -
+        Number(r.neutralized) - Number(r.handedOver) - Number(r.stored);
+      return {
+        quarter: `Q${r.quarter}`,
+        year: r.year,
+        wasteName: r.wasteName,
+        wasteClass: r.wasteClass,
+        opening: r.opening,
+        generated: r.generated,
+        recycled: r.recycled,
+        neutralized: r.neutralized,
+        handedOver: r.handedOver,
+        stored: r.stored,
+        closing: close.toFixed(1),
+        status: STATUS_LABELS[r.status]?.label || r.status,
+      };
+    });
+
+    exportExcel({
+      title: 'Choraklik hisobotlar · 2026',
+      subtitle: "Barcha choraklar bo'yicha yig'ma jadval",
+      columns,
+      rows,
+      fileName: `Choraklik-hisobot-2026-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      sheetName: 'Choraklik hisobot',
+      meta: {
+        Tashkilot: 'ABC MChJ',
+        STIR: '123456789',
+        Hudud: 'Toshkent shahri',
+        Davr: '2026-yil',
       },
     });
   };
@@ -143,17 +213,19 @@ export default function QuarterlyReport() {
     <Layout
       title="Choraklik hisobot"
       subtitle="2026-yil hisobot davri"
-     
-actions={
-  <>
-    <Button variant="secondary" size="sm" onClick={handleExportPDF}>
-      <FileDown size={15} /> PDF yuklash
-    </Button>
-    <Button size="sm" onClick={openNew}>
-      <Plus size={15} /> Yangi hisobot
-    </Button>
-  </>
-}
+      actions={
+        <>
+          <Button variant="secondary" size="sm" onClick={handleExportPDF}>
+            <FileDown size={15} /> PDF
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleExportExcel}>
+            <FileSpreadsheet size={15} /> Excel
+          </Button>
+          <Button size="sm" onClick={openNew}>
+            <Plus size={15} /> Yangi
+          </Button>
+        </>
+      }
     >
       <div className="table-wrap mb-4">
         <table>
@@ -190,9 +262,21 @@ actions={
                   <td><Badge color={st.color}>{st.label}</Badge></td>
                   <td>
                     <div className="row" style={{ gap: 4 }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(r)}>✏️</button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => openEdit(r)}
+                        title="Tahrirlash"
+                      >
+                        ✏️
+                      </button>
                       {r.status === 'draft' && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => submit(r.id)}>📤</button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => submit(r.id)}
+                          title="Yuborish"
+                        >
+                          📤
+                        </button>
                       )}
                     </div>
                   </td>
@@ -210,7 +294,9 @@ actions={
           onClose={() => setShowForm(false)}
           actions={
             <>
-              <Button variant="secondary" onClick={() => setShowForm(false)}>Bekor</Button>
+              <Button variant="secondary" onClick={() => setShowForm(false)}>
+                Bekor
+              </Button>
               <Button onClick={save}>Saqlash</Button>
             </>
           }
@@ -221,14 +307,18 @@ actions={
               value={form.quarter}
               onChange={(e) => setForm({ ...form, quarter: Number(e.target.value) })}
             >
-              {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}
+              {[1, 2, 3, 4].map((q) => (
+                <option key={q} value={q}>Q{q}</option>
+              ))}
             </Select>
+
             <Input
               label="Yil"
               type="number"
               value={form.year}
               onChange={(e) => setForm({ ...form, year: Number(e.target.value) })}
             />
+
             <div className="full">
               <Input
                 label="Chiqindi nomi"
@@ -236,6 +326,7 @@ actions={
                 onChange={(e) => setForm({ ...form, wasteName: e.target.value })}
               />
             </div>
+
             <Input
               label="Yil boshidagi qoldiq"
               type="number"
@@ -244,7 +335,7 @@ actions={
               onChange={(e) => setForm({ ...form, opening: e.target.value })}
             />
             <Input
-              label="Hosil bo‘lgan"
+              label="Hosil bo'lgan"
               type="number"
               step="0.1"
               value={form.generated}
@@ -278,6 +369,7 @@ actions={
               value={form.stored}
               onChange={(e) => setForm({ ...form, stored: e.target.value })}
             />
+
             <div className="full">
               <div
                 style={{

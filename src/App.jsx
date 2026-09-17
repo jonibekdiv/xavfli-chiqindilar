@@ -11,10 +11,11 @@ import Documents from './pages/Documents.jsx';
 import Notifications from './pages/Notifications.jsx';
 import RegionalDashboard from './pages/RegionalDashboard.jsx';
 import RegionalReports from './pages/RegionalReports.jsx';
+import RegionalFiles from './pages/RegionalFiles.jsx';
 import DirectorateDashboard from './pages/DirectorateDashboard.jsx';
+import DirectorateFiles from './pages/DirectorateFiles.jsx';
 import Analytics from './pages/Analytics.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
-
 
 function HomeRouter() {
   const { user } = useAuth();
@@ -38,7 +39,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      {/* Company */}
+      {/* Korxona */}
       <Route path="/" element={<HomeRouter />} />
       <Route path="/profile" element={<Guard roles={['company']}><CompanyProfile /></Guard>} />
       <Route path="/wastes" element={<Guard roles={['company']}><WasteRegistry /></Guard>} />
@@ -47,11 +48,13 @@ export default function App() {
       <Route path="/documents" element={<Guard roles={['company']}><Documents /></Guard>} />
       <Route path="/notifications" element={<Notifications />} />
 
-      {/* Regional */}
+      {/* Mintaqaviy */}
       <Route path="/regional/reports" element={<Guard roles={['regional']}><RegionalReports /></Guard>} />
+      <Route path="/regional/files" element={<Guard roles={['regional']}><RegionalFiles /></Guard>} />
 
-      {/* Directorate */}
+      {/* Direksiya */}
       <Route path="/directorate/companies" element={<Guard roles={['directorate']}><RegionalDashboard /></Guard>} />
+      <Route path="/directorate/files" element={<Guard roles={['directorate']}><DirectorateFiles /></Guard>} />
       <Route path="/directorate/analytics" element={<Guard roles={['directorate']}><Analytics /></Guard>} />
 
       {/* Admin */}

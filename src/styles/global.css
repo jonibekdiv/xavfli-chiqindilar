@@ -599,3 +599,138 @@ tbody tr:hover { background: #F8F9FB; }
   .topbar-actions .icon-btn { width: 34px; height: 34px; }
   .topbar h1 { font-size: 17px; }
 }
+/* ============ FILE VIEWER ============ */
+.file-viewer {
+  background: #fff;
+  border-radius: 22px;
+  width: 100%;
+  max-width: 1100px;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s var(--ease);
+}
+.file-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ios-sep);
+  background: #FAFAFC;
+  flex-wrap: wrap;
+}
+.file-viewer-body {
+  flex: 1;
+  overflow: auto;
+  background: #F2F2F7;
+  position: relative;
+}
+.file-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+.excel-view {
+  padding: 16px;
+  overflow: auto;
+  height: 100%;
+  background: #fff;
+}
+.excel-view table {
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.excel-view th,
+.excel-view td {
+  border: 1px solid var(--ios-sep);
+  padding: 0;
+  min-width: 110px;
+  height: 32px;
+  white-space: nowrap;
+}
+.excel-cell {
+  padding: 7px 10px;
+  min-height: 32px;
+}
+.excel-cell-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  padding: 7px 10px;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+}
+.excel-cell-input:focus {
+  background: rgba(0, 122, 255, 0.06);
+  box-shadow: inset 0 0 0 2px var(--ios-blue);
+}
+.docx-view {
+  padding: 32px 40px;
+  background: #fff;
+  min-height: 100%;
+  font-size: 15px;
+  line-height: 1.6;
+  outline: none;
+}
+.docx-view:focus {
+  box-shadow: inset 0 0 0 2px var(--ios-blue);
+}
+.docx-view img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+.docx-view h1,
+.docx-view h2,
+.docx-view h3 {
+  margin-top: 1em;
+}
+.docx-view p {
+  margin: 0.6em 0;
+}
+.docx-view table {
+  min-width: 0;
+  border-collapse: collapse;
+}
+.docx-view table td,
+.docx-view table th {
+  border: 1px solid #ccc;
+  padding: 6px 10px;
+}
+.text-editor {
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 20px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  background: #fff;
+}
+
+@media (max-width: 768px) {
+  .file-viewer {
+    border-radius: 0;
+    height: 100vh;
+    max-width: 100%;
+  }
+  .file-viewer-header {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+  .docx-view {
+    padding: 20px 18px;
+  }
+}
+.icon-btn .dot {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--ios-red);
+  animation: dot-pulse 2s infinite;
+}

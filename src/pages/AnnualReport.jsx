@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import { Card, Badge, Button } from '../components/UI.jsx';
 import { exportPDF } from '../utils/pdf.js';
+import { exportExcel } from '../utils/excel.js';
 import { Printer, FileDown, FileSpreadsheet } from 'lucide-react';
 
 export default function AnnualReport() {
@@ -36,21 +37,20 @@ export default function AnnualReport() {
 
   const list = Object.values(annual);
 
-  // ===== PDF EKSPORT (imzo bilan) =====
-  const handleExportPDF = () => {
-    const columns = [
-      { header: 'Chiqindi', dataKey: 'name' },
-      { header: 'Sinf', dataKey: 'wasteClass' },
-      { header: 'Yil boshida', dataKey: 'opening' },
-      { header: 'Hosil bo\'ldi', dataKey: 'generated' },
-      { header: 'Qayta ishlandi', dataKey: 'recycled' },
-      { header: 'Zararsiz.', dataKey: 'neutralized' },
-      { header: 'Topshirildi', dataKey: 'handedOver' },
-      { header: 'Saqlangan', dataKey: 'stored' },
-      { header: 'Yil oxiri', dataKey: 'closing' },
-    ];
+  const columns = [
+    { header: 'Chiqindi', dataKey: 'name' },
+    { header: 'Sinf', dataKey: 'wasteClass' },
+    { header: 'Yil boshida', dataKey: 'opening' },
+    { header: 'Hosil bo\'ldi', dataKey: 'generated' },
+    { header: 'Qayta ishlandi', dataKey: 'recycled' },
+    { header: 'Zararsizlantirildi', dataKey: 'neutralized' },
+    { header: 'Topshirildi', dataKey: 'handedOver' },
+    { header: 'Saqlangan', dataKey: 'stored' },
+    { header: 'Yil oxiri', dataKey: 'closing' },
+  ];
 
-    const rows = list.map((w) => {
+  const buildRows = () =>
+    list.map((w) => {
       const closing =
         w.opening + w.generated - w.recycled - w.neutralized - w.handedOver - w.stored;
       return {
@@ -66,11 +66,12 @@ export default function AnnualReport() {
       };
     });
 
+  const handleExportPDF = () => {
     exportPDF({
       title: 'Yillik hisobot · 2026',
       subtitle: 'Xavfli chiqindilarni hosil qiluvchi tashkilotlar hisoboti',
       columns,
-      rows,
+      rows: buildRows(),
       fileName: `Yillik-hisobot-2026-${new Date().toISOString().slice(0, 10)}.pdf`,
       orientation: 'portrait',
       meta: {
@@ -87,25 +88,40 @@ export default function AnnualReport() {
     });
   };
 
+  const handleExportExcel = () => {
+    exportExcel({
+      title: 'Yillik hisobot · 2026',
+      subtitle: 'Xavfli chiqindilarni hosil qiluvchi tashkilotlar hisoboti',
+      columns,
+      rows: buildRows(),
+      fileName: `Yillik-hisobot-2026-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      sheetName: 'Yillik hisobot',
+      meta: {
+        'Tashkilot': 'ABC MChJ',
+        'STIR': '123456789',
+        'Hudud': 'Toshkent shahri',
+        'Davr': '2026-yil',
+      },
+    });
+  };
+
   return (
     <Layout
       title="Yillik hisobot · 2026"
       subtitle="Choraklik ma’lumotlardan avtomatik shakllangan"
-     
-actions={
-  <>
-    <Button variant="secondary" size="sm" onClick={() => window.print()}>
-      <Printer size={15} /> PDF ko‘rish
-    </Button>
-    <Button variant="secondary" size="sm" onClick={handleExportPDF}>
-      <FileDown size={15} /> PDF yuklash
-    </Button>
-    <Button size="sm" onClick={() => alert('Excel tez orada...')}>
-      <FileSpreadsheet size={15} /> Excel yuklash
-    </Button>
-  </>
-}
-
+      actions={
+        <>
+          <Button variant="secondary" size="sm" onClick={() => window.print()}>
+            <Printer size={15} /> PDF ko‘rish
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleExportPDF}>
+            <FileDown size={15} /> PDF yuklash
+          </Button>
+          <Button size="sm" onClick={handleExportExcel}>
+            <FileSpreadsheet size={15} /> Excel yuklash
+          </Button>
+        </>
+      }
     >
       <div className="table-wrap mb-4">
         <table>
