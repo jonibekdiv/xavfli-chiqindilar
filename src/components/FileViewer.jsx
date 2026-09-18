@@ -1,13 +1,17 @@
-// src/components/FileViewer.jsx
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import { X, Download, Save, Pencil, Eye } from 'lucide-react';
 import { Button } from './UI.jsx';
+import { getFile } from '../utils/fileStore.js';
 
 function getKind(ext, mime = '') {
   if (ext === 'pdf' || mime.includes('pdf')) return 'pdf';
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext) || mime.startsWith('image/')) return 'image';
+  if (
+    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext) ||
+    mime.startsWith('image/')
+  )
+    return 'image';
   if (['xlsx', 'xls', 'xlsm'].includes(ext)) return 'excel';
   if (ext === 'csv') return 'csv';
   if (ext === 'docx') return 'docx';
@@ -45,7 +49,17 @@ function ExcelEditor({ value, onChange, editable }) {
         <tbody>
           {aoa.map((row, r) => (
             <tr key={r}>
-              <th style={{ width: 40, textAlign: 'center', color: '#8E8E93', background: '#FAFAFC', position: 'sticky', left: 0, zIndex: 1 }}>
+              <th
+                style={{
+                  width: 40,
+                  textAlign: 'center',
+                  color: '#8E8E93',
+                  background: '#FAFAFC',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 1,
+                }}
+              >
                 {r + 1}
               </th>
               {Array.from({ length: maxCols }).map((_, c) => (
@@ -74,6 +88,7 @@ export default function FileViewer({ file, onClose }) {
   const [error, setError] = useState('');
   const [mode, setMode] = useState('view');
   const [content, setContent] = useState(null);
+  const [blob, setBlob] = useState(null);
   const urlRef = useRef(null);
 
   const ext = file.name.split('.').pop().toLowerCase();
@@ -84,26 +99,32 @@ export default function FileViewer({ file, onClose }) {
     let mounted = true;
     (async () => {
       try {
-        const blob = file.blob;
+        // ✅ Blob'ni har doim IndexedDB'dan olamiz (xavfsizroq)
+        let b = file.blob;
+        if (!b || !(b instanceof Blob)) {
+          const stored = await getFile(file.id);
+          b = stored?.blob;
+        }
+        if (!b) throw new Error('Fayl blob topilmadi');
+        if (mounted) setBlob(b);
+
         if (['pdf', 'image'].includes(kind)) {
-          const url = URL.createObjectURL(blob);
+          const url = URL.createObjectURL(b);
           urlRef.current = url;
           if (mounted) setContent(url);
         } else if (kind === 'excel' || kind === 'csv') {
-          const buf = await blob.arrayBuffer();
+          const buf = await b.arrayBuffer();
           const wb = XLSX.read(buf, { type: 'array' });
           const ws = wb.Sheets[wb.SheetNames[0]];
           const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
           if (mounted) setContent({ sheetName: wb.SheetNames[0], aoa });
         } else if (kind === 'docx') {
-          const buf = await blob.arrayBuffer();
+          const buf = await b.arrayBuffer();
           const result = await mammoth.convertToHtml({ arrayBuffer: buf });
           if (mounted) setContent(result.value || '<p></p>');
         } else if (kind === 'text') {
-          const text = await blob.text();
+          const text = await b.text();
           if (mounted) setContent(text);
-        } else {
-          if (mounted) setContent(null);
         }
       } catch (e) {
         if (mounted) setError(e.message || 'Faylni ochib bo‘lmadi');
@@ -117,7 +138,9 @@ export default function FileViewer({ file, onClose }) {
     };
   }, [file, kind]);
 
-  const downloadOriginal = () => downloadBlob(file.blob, file.name);
+  const downloadOriginal = () => {
+    if (blob) downloadBlob(blob, file.name);
+  };
 
   const saveEdited = () => {
     try {
@@ -127,7 +150,10 @@ export default function FileViewer({ file, onClose }) {
         XLSX.utils.book_append_sheet(wb, ws, content.sheetName || 'Sheet1');
         const bookType = kind === 'csv' ? 'csv' : 'xlsx';
         const out = XLSX.write(wb, { bookType, type: 'array' });
-        const mime = kind === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        const mime =
+          kind === 'csv'
+            ? 'text/csv'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         downloadBlob(new Blob([out], { type: mime }), file.name);
       } else if (kind === 'docx') {
         const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${file.name}</title></head><body>${content}</body></html>`;
@@ -146,14 +172,31 @@ export default function FileViewer({ file, onClose }) {
       <div className="file-viewer" onClick={(e) => e.stopPropagation()}>
         <div className="file-viewer-header">
           <div className="row" style={{ minWidth: 0, flex: 1 }}>
-            <div className="list-icon" style={{ background: 'rgba(0,122,255,0.1)', color: '#007AFF', flexShrink: 0 }}>
+            <div
+              className="list-icon"
+              style={{
+                background: 'rgba(0,122,255,0.1)',
+                color: '#007AFF',
+                flexShrink: 0,
+              }}
+            >
               📄
             </div>
             <div style={{ minWidth: 0 }}>
-              <b style={{ display: 'block', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <b
+                style={{
+                  display: 'block',
+                  fontSize: 14,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {file.name}
               </b>
-              <span style={{ fontSize: 12, color: '#8E8E93' }}>{file.sizeText} · {file.date}</span>
+              <span style={{ fontSize: 12, color: '#8E8E93' }}>
+                {file.sizeText} · {file.date}
+              </span>
             </div>
           </div>
 
@@ -164,7 +207,15 @@ export default function FileViewer({ file, onClose }) {
                 size="sm"
                 onClick={() => setMode(mode === 'edit' ? 'view' : 'edit')}
               >
-                {mode === 'edit' ? <><Eye size={14} /> Ko‘rish</> : <><Pencil size={14} /> Tahrirlash</>}
+                {mode === 'edit' ? (
+                  <>
+                    <Eye size={14} /> Ko‘rish
+                  </>
+                ) : (
+                  <>
+                    <Pencil size={14} /> Tahrirlash
+                  </>
+                )}
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={downloadOriginal}>
@@ -182,19 +233,37 @@ export default function FileViewer({ file, onClose }) {
         </div>
 
         <div className="file-viewer-body">
-          {loading && <div className="muted" style={{ padding: 40, textAlign: 'center' }}>Yuklanmoqda...</div>}
-          {error && <div style={{ padding: 40, textAlign: 'center', color: '#FF3B30' }}>⚠ {error}</div>}
+          {loading && (
+            <div className="muted" style={{ padding: 40, textAlign: 'center' }}>
+              Yuklanmoqda...
+            </div>
+          )}
+          {error && (
+            <div style={{ padding: 40, textAlign: 'center', color: '#FF3B30' }}>
+              ⚠ {error}
+            </div>
+          )}
 
           {!loading && !error && content !== null && (
             <>
-              {kind === 'pdf' && <iframe src={content} title={file.name} className="file-frame" />}
+              {kind === 'pdf' && (
+                <iframe src={content} title={file.name} className="file-frame" />
+              )}
               {kind === 'image' && (
                 <div style={{ padding: 20, textAlign: 'center' }}>
-                  <img src={content} alt={file.name} style={{ maxWidth: '100%', borderRadius: 12 }} />
+                  <img
+                    src={content}
+                    alt={file.name}
+                    style={{ maxWidth: '100%', borderRadius: 12 }}
+                  />
                 </div>
               )}
               {(kind === 'excel' || kind === 'csv') && (
-                <ExcelEditor value={content} onChange={setContent} editable={mode === 'edit'} />
+                <ExcelEditor
+                  value={content}
+                  onChange={setContent}
+                  editable={mode === 'edit'}
+                />
               )}
               {kind === 'docx' && (
                 <div
@@ -218,8 +287,12 @@ export default function FileViewer({ file, onClose }) {
 
           {!loading && !error && content === null && (
             <div style={{ padding: 60, textAlign: 'center', color: '#8E8E93' }}>
-              <p style={{ fontSize: 15, color: '#3C3C43', fontWeight: 600 }}>Bu fayl turi ko‘rib chiqishni qo‘llab-quvvatlamaydi</p>
-              <p style={{ fontSize: 13 }}>Faylni yuklab olib, kompyuterda oching.</p>
+              <p style={{ fontSize: 15, color: '#3C3C43', fontWeight: 600 }}>
+                Bu fayl turi ko‘rib chiqishni qo‘llab-quvvatlamaydi
+              </p>
+              <p style={{ fontSize: 13 }}>
+                Faylni yuklab olib, kompyuterda oching.
+              </p>
             </div>
           )}
         </div>

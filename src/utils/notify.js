@@ -1,8 +1,14 @@
 // src/utils/notify.js
-// Bildirishnomalar localStorage'da saqlanadi va har bir foydalanuvchi
-// faqat o'ziga yuborilganlarini ko'radi.
-
 const KEY = 'crm_notifications_v2';
+let channel = null;
+
+try {
+  if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    channel = new BroadcastChannel('crm_notifications');
+  }
+} catch {
+  channel = null;
+}
 
 function readAll() {
   try {
@@ -14,21 +20,22 @@ function readAll() {
 
 function writeAll(list) {
   localStorage.setItem(KEY, JSON.stringify(list));
-  // Boshqa tablarga ham xabar berish uchun event
+  // Hamma tablarga xabar berish
   window.dispatchEvent(new CustomEvent('crm:notifications-changed'));
+  if (channel) {
+    try {
+      channel.postMessage({ type: 'changed' });
+    } catch {}
+  }
 }
 
-/**
- * Yangi bildirishnoma yuborish
- * @param {Object} n
- * @param {string} n.toUserId    - qabul qiluvchi foydalanuvchi ID
- * @param {string} n.fromUserId  - yuboruvchi ID (ixtiyoriy)
- * @param {string} n.fromName    - yuboruvchi ismi
- * @param {string} n.type        - 'info'|'success'|'warning'|'error'|'returned'|'approved'|'submitted'
- * @param {string} n.title       - sarlavha
- * @param {string} n.text        - matn (sabab, izoh)
- * @param {string} n.relatedFileId - bog'liq fayl ID (ixtiyoriy)
- */
+// Boshqa tabdan kelgan xabarni qabul qilish
+if (channel) {
+  channel.onmessage = () => {
+    window.dispatchEvent(new CustomEvent('crm:notifications-changed'));
+  };
+}
+
 export function pushNotification(n) {
   const list = readAll();
   const item = {

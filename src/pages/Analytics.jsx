@@ -1,8 +1,11 @@
 import Layout from '../components/Layout.jsx';
 import { Card } from '../components/UI.jsx';
+import PermissionGate from '../components/PermissionGate.jsx';
 import { MOCK_COMPANIES, WASTE_TYPES } from '../data/mockData.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { can } from '../utils/permissions.js';
 import {
-  Recycle, Building2, TrendingUp, AlertTriangle,
+  Recycle, Building2, TrendingUp, AlertTriangle, Lock,
 } from 'lucide-react';
 
 function StatCardFixed({ label, value, unit, Icon, accent }) {
@@ -96,6 +99,28 @@ function StatCardFixed({ label, value, unit, Icon, accent }) {
 }
 
 export default function Analytics() {
+  const { user } = useAuth();
+
+  // ===== RBAC: ruxsat yo'q bo'lsa — ko'rsatmaymiz =====
+  const hasAccess =
+    can(user, 'analytics.view_all') || can(user, 'analytics.view_region');
+
+  if (!hasAccess) {
+    return (
+      <Layout title="Analitika" subtitle="Ruxsat yo‘q">
+        <div className="empty">
+          <div className="empty-icon">
+            <Lock size={48} strokeWidth={1.5} />
+          </div>
+          <b>Kirish taqiqlangan</b>
+          <div>Analitika bo‘limiga ruxsatingiz yo‘q</div>
+        </div>
+      </Layout>
+    );
+  }
+
+  const isGlobal = can(user, 'analytics.view_all');
+
   const total = MOCK_COMPANIES.reduce((s, c) => s + c.wasteTotal, 0);
 
   const byType = WASTE_TYPES.slice(0, 6).map((t, i) => ({
@@ -107,7 +132,11 @@ export default function Analytics() {
   return (
     <Layout
       title="Analitika"
-      subtitle="Respublika bo‘yicha tahlil · 2026"
+      subtitle={
+        isGlobal
+          ? 'Respublika bo‘yicha tahlil · 2026'
+          : `Hudud bo‘yicha tahlil · ${user.region || ''}`
+      }
     >
       {/* ===== Stat kartochkalar ===== */}
       <div
@@ -159,10 +188,7 @@ export default function Analytics() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {byType.map((t) => (
               <div key={t.name}>
-                <div
-                  className="between"
-                  style={{ marginBottom: 8 }}
-                >
+                <div className="between" style={{ marginBottom: 8 }}>
                   <span style={{ fontSize: 13.5, fontWeight: 500 }}>
                     {t.name}
                   </span>
@@ -193,45 +219,48 @@ export default function Analytics() {
           </div>
         </Card>
 
-        <Card style={{ padding: 24 }}>
-          <div className="card-title">Xavflilik sinflari</div>
-          {[
-            { cls: 'I', color: '#FF3B30', pct: 12 },
-            { cls: 'II', color: '#FF9500', pct: 28 },
-            { cls: 'III', color: '#FFCC00', pct: 34 },
-            { cls: 'IV', color: '#007AFF', pct: 18 },
-            { cls: 'V', color: '#34C759', pct: 8 },
-          ].map((s) => (
-            <div key={s.cls} style={{ marginBottom: 16 }}>
-              <div className="between" style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 500 }}>
-                  Sinf {s.cls}
-                </span>
-                <b className="mono" style={{ fontSize: 13 }}>
-                  {s.pct}%
-                </b>
-              </div>
-              <div
-                style={{
-                  height: 8,
-                  background: 'var(--ios-gray5)',
-                  borderRadius: 20,
-                  overflow: 'hidden',
-                }}
-              >
+        {/* Faqat "analytics.view_all" bo'lsa ko'rsatiladi */}
+        <PermissionGate action="analytics.view_all">
+          <Card style={{ padding: 24 }}>
+            <div className="card-title">Xavflilik sinflari</div>
+            {[
+              { cls: 'I', color: '#FF3B30', pct: 12 },
+              { cls: 'II', color: '#FF9500', pct: 28 },
+              { cls: 'III', color: '#FFCC00', pct: 34 },
+              { cls: 'IV', color: '#007AFF', pct: 18 },
+              { cls: 'V', color: '#34C759', pct: 8 },
+            ].map((s) => (
+              <div key={s.cls} style={{ marginBottom: 16 }}>
+                <div className="between" style={{ marginBottom: 8 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>
+                    Sinf {s.cls}
+                  </span>
+                  <b className="mono" style={{ fontSize: 13 }}>
+                    {s.pct}%
+                  </b>
+                </div>
                 <div
                   style={{
-                    width: `${s.pct}%`,
-                    height: '100%',
-                    background: s.color,
+                    height: 8,
+                    background: 'var(--ios-gray5)',
                     borderRadius: 20,
-                    transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+                    overflow: 'hidden',
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: `${s.pct}%`,
+                      height: '100%',
+                      background: s.color,
+                      borderRadius: 20,
+                      transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </Card>
+            ))}
+          </Card>
+        </PermissionGate>
       </div>
     </Layout>
   );

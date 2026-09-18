@@ -34,55 +34,55 @@ export function deleteDoc(id) {
 
 export function genDocNumber(type) {
   const prefix =
-    {
-      kiruvchi: 'KIR',
-      chiquvchi: 'CHIQ',
-      murojaat: 'MUR',
-      ichki: 'ICH',
-    }[type] || 'DOC';
+    { kiruvchi: 'KIR', chiquvchi: 'CHIQ', murojaat: 'MUR', ichki: 'ICH' }[type] ||
+    'DOC';
   const year = new Date().getFullYear();
   const list = listDocs().filter((d) => d.type === type);
   const num = String(list.length + 1).padStart(4, '0');
   return `${prefix}-${year}-${num}`;
 }
 
-// ==================== Foydalanuvchiga tegishli ====================
-
-/** Foydalanuvchi YARATGAN hujjatlar */
+// ==================== MEN YARATGAN ====================
 export function listMyDocs(user) {
+  if (!user) return [];
   return listDocs().filter((d) => d.createdBy === user.id);
 }
 
-/** Foydalanuvchi QABUL QILUVCHI bo‘lgan hujjatlar */
+// ==================== MENGA KELGAN ====================
 export function listIncomingDocs(user) {
   if (!user) return [];
+
   if (user.role === 'admin') {
-    return listDocs().filter((d) => d.status === 'sent');
+    return listDocs().filter((d) => d.status !== 'draft');
   }
 
-  // Foydalanuvchi hududini ORG_UNITS da topamiz
-  const unit = ORG_UNITS.find(
-    (u) => u.name === user.region || u.name === user.organization
-  );
+  if (user.role === 'directorate') {
+    return listDocs().filter((d) => d.status !== 'draft');
+  }
 
-  if (!unit) {
-    // Topilmasa — barcha yuborilganlarni ko‘rsatamiz (fallback)
+  if (user.role === 'regional') {
+    const unit = ORG_UNITS.find(
+      (u) => u.name === user.region || u.name === user.organization
+    );
+    if (!unit) {
+      return listDocs().filter(
+        (d) => d.status !== 'draft' && d.createdBy !== user.id
+      );
+    }
+    const unitIds = unit.children.map((c) => c.id);
     return listDocs().filter(
-      (d) => d.status === 'sent' && d.createdBy !== user.id
+      (d) =>
+        d.status !== 'draft' &&
+        d.createdBy !== user.id &&
+        Array.isArray(d.recipients) &&
+        d.recipients.some((r) => unitIds.includes(r))
     );
   }
 
-  const unitIds = unit.children.map((c) => c.id);
-  return listDocs().filter(
-    (d) =>
-      ['sent', 'approved', 'returned', 'rejected'].includes(d.status) &&
-      Array.isArray(d.recipients) &&
-      d.recipients.some((r) => unitIds.includes(r)) &&
-      d.createdBy !== user.id
-  );
+  return [];
 }
 
-/** Qabul qilingan, ko‘rilmagan hujjatlar soni */
+// ==================== UNREAD SONI ====================
 export function countUnreadIncoming(user) {
   const incoming = listIncomingDocs(user);
   return incoming.filter(
@@ -91,8 +91,6 @@ export function countUnreadIncoming(user) {
 }
 
 // ==================== WORKFLOW ====================
-
-/** Hujjatni o‘qilgan deb belgilash */
 export function markDocRead(id, user) {
   const doc = getDoc(id);
   if (!doc) return;
@@ -106,7 +104,6 @@ export function markDocRead(id, user) {
   updateDoc(id, { readBy });
 }
 
-/** Tasdiqlash (Qabul qilish) */
 export function approveDoc(id, user, comment = '') {
   const doc = getDoc(id);
   if (!doc) return;
@@ -129,7 +126,6 @@ export function approveDoc(id, user, comment = '') {
   });
 }
 
-/** Qaytarish (xato bor) */
 export function returnDoc(id, user, reason) {
   const doc = getDoc(id);
   if (!doc) return;
@@ -152,7 +148,6 @@ export function returnDoc(id, user, reason) {
   });
 }
 
-/** Bekor qilish (rad etish) */
 export function rejectDoc(id, user, reason) {
   const doc = getDoc(id);
   if (!doc) return;

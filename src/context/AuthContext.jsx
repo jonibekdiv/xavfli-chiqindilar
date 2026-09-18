@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
     if (saved) {
       try {
         setUser(JSON.parse(saved));
-      } catch (e) {
+      } catch {
         localStorage.removeItem('crm_user');
       }
     }
@@ -24,16 +24,20 @@ export function AuthProvider({ children }) {
     if (!found) {
       return { ok: false, error: 'Login yoki parol xato' };
     }
+
+    // ✅ TO'LIQ user obyekti — organization va stir ham bor
     const safe = {
       id: found.id,
       login: found.login,
       name: found.name,
       role: found.role,
       roleLabel: found.roleLabel,
-      organization: found.organization,
-      stir: found.stir,
-      region: found.region
+      organization: found.organization || '',
+      stir: found.stir || '',
+      region: found.region || '',
+      status: found.status || 'active',
     };
+
     setUser(safe);
     localStorage.setItem('crm_user', JSON.stringify(safe));
     return { ok: true };
@@ -53,9 +57,7 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth faqat AuthProvider ichida ishlatilishi kerak');
-  }
+  if (!ctx) throw new Error('useAuth faqat AuthProvider ichida ishlaydi');
   return ctx;
 }
 

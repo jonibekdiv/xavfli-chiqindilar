@@ -6,7 +6,13 @@ import FileViewer from '../components/FileViewer.jsx';
 import Dropdown from '../components/Dropdown.jsx';
 import Icon from '../components/Icons.jsx';
 import {
-  Upload, Trash2, Eye, Send, RotateCcw, CheckCircle2, AlertTriangle,
+  ApproveButton,
+  ReturnButton,
+  RejectButton,
+  DeleteButton,
+} from '../components/ActionButtons.jsx';
+import {
+  Upload, Eye, Send, RotateCcw, CheckCircle2, AlertTriangle,
   FileText, Building2, Plus, Inbox, FileSignature,
   XCircle, ShieldCheck, User as UserIcon, MessageSquare, Paperclip,
 } from 'lucide-react';
@@ -23,6 +29,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirm } from '../context/ConfirmContext.jsx';
 import { FILE_STATUS } from '../data/mockData.js';
 import { unitFullName } from '../data/orgUnits.js';
+import { canAny, can } from '../utils/permissions.js';
 
 function formatSize(bytes) {
   if (!bytes) return '—';
@@ -66,6 +73,15 @@ export default function Documents() {
   const confirm = useConfirm();
   const nav = useNavigate();
 
+  // ===== RBAC =====
+  const canCreate = canAny(user, ['doc.create']);
+  const canUploadFile = canAny(user, ['file.upload']);
+  const canApprove = canAny(user, ['doc.approve', 'file.approve']);
+  const canReturn = canAny(user, ['doc.return', 'file.return']);
+  const canReject = canAny(user, ['doc.reject']);
+  const canDeleteFile = canAny(user, ['file.delete', 'file.upload']);
+  const isRecipientRole = canApprove || canReturn || canReject;
+
   const [myFiles, setMyFiles] = useState([]);
   const [incomingFiles, setIncomingFiles] = useState([]);
   const [myDocs, setMyDocs] = useState([]);
@@ -77,15 +93,11 @@ export default function Documents() {
   const [deleteReason, setDeleteReason] = useState('');
   const [returnInfo, setReturnInfo] = useState(null);
   const [docDetail, setDocDetail] = useState(null);
-  const [fileDetail, setFileDetail] = useState(null);
   const [actionDoc, setActionDoc] = useState(null);
   const [actionType, setActionType] = useState(null);
   const [actionReason, setActionReason] = useState('');
   const [filter, setFilter] = useState('all');
   const fileInputRef = useRef(null);
-
-  const isRecipientRole = ['regional', 'directorate', 'admin'].includes(user.role);
-  const isCompany = user.role === 'company';
 
   const newDocItems = [
     {
@@ -118,13 +130,12 @@ export default function Documents() {
     setLoading(true);
     const all = await listFiles();
 
-    // O'zim yuklagan fayllar
-    const mine = all
-      .filter((f) => f.uploaderId === user.id || f.ownerId === user.id)
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    setMyFiles(mine);
+    setMyFiles(
+      all
+        .filter((f) => f.uploaderId === user.id || f.ownerId === user.id)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    );
 
-    // Kelgan fayllar (faqat regional/directorate/admin)
     if (isRecipientRole) {
       const incoming = await listIncomingFiles(user);
       setIncomingFiles(
@@ -139,6 +150,9 @@ export default function Documents() {
           (b.createdAt || '').localeCompare(a.createdAt || '')
         )
       );
+    } else {
+      setIncomingFiles([]);
+      setIncomingDocs([]);
     }
 
     setMyDocs(
@@ -157,6 +171,7 @@ export default function Documents() {
 
   // ===== Fayl yuklash =====
   const handleUpload = async (e) => {
+    if (!canUploadFile) return;
     const files = Array.from(e.target.files || []);
     for (const f of files) {
       const id = 'f' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -221,9 +236,11 @@ export default function Documents() {
     load();
   };
 
-  // ===== Kelgan fayl ustida harakat (regional) =====
+  // ===== Kelgan fayl ustida harakat =====
   const openFileAction = async (file, type) => {
-    setFileDetail(null);
+    if (type === 'approve' && !canApprove) return;
+    if (type === 'return' && !canReturn) return;
+
     if (type === 'approve') {
       const ok = await confirm({
         title: 'Faylni tasdiqlash',
@@ -290,7 +307,7 @@ export default function Documents() {
 
   // ===== Faylni o‘chirish =====
   const doDelete = async () => {
-    if (!confirmDelete) return;
+    if (!confirmDelete || !canDeleteFile) return;
     const reason = deleteReason.trim();
 
     if (!reason) {
@@ -319,8 +336,12 @@ export default function Documents() {
     load();
   };
 
-  // ===== Hujjat harakati (tasdiqlash/qaytarish/bekor) =====
+  // ===== Hujjat harakati =====
   const openDocAction = (doc, type) => {
+    if (type === 'approve' && !canApprove) return;
+    if (type === 'return' && !canReturn) return;
+    if (type === 'reject' && !canReject) return;
+
     markDocRead(doc.id, user);
     setDocDetail(null);
     setActionDoc(doc);
@@ -406,61 +427,42 @@ export default function Documents() {
   };
 
   // ===== FILTRLASH =====
-  // Har bir filtr hamma bo'limlarga ta'sir qiladi
   const filteredMyFiles = useMemo(() => {
     if (filter === 'all') return myFiles;
-    if (filter === 'draft')
-      return myFiles.filter((d) => d.status === 'draft');
-    if (filter === 'sent')
-      return myFiles.filter((d) => d.status === 'submitted');
-    if (filter === 'approved')
-      return myFiles.filter((d) => d.status === 'approved');
-    if (filter === 'returned')
-      return myFiles.filter((d) => d.status === 'returned');
+    if (filter === 'draft') return myFiles.filter((d) => d.status === 'draft');
+    if (filter === 'sent') return myFiles.filter((d) => d.status === 'submitted');
+    if (filter === 'approved') return myFiles.filter((d) => d.status === 'approved');
+    if (filter === 'returned') return myFiles.filter((d) => d.status === 'returned');
     return [];
   }, [myFiles, filter]);
 
   const filteredIncomingFiles = useMemo(() => {
     if (filter === 'all') return incomingFiles;
-    if (filter === 'sent')
-      return incomingFiles.filter((d) => d.status === 'submitted');
-    if (filter === 'approved')
-      return incomingFiles.filter((d) => d.status === 'approved');
-    if (filter === 'returned')
-      return incomingFiles.filter((d) => d.status === 'returned');
-    if (filter === 'rejected') return [];
-    if (filter === 'draft') return [];
-    return incomingFiles;
+    if (filter === 'sent') return incomingFiles.filter((d) => d.status === 'submitted');
+    if (filter === 'approved') return incomingFiles.filter((d) => d.status === 'approved');
+    if (filter === 'returned') return incomingFiles.filter((d) => d.status === 'returned');
+    return [];
   }, [incomingFiles, filter]);
 
   const filteredMyDocs = useMemo(() => {
     if (filter === 'all') return myDocs;
-    if (filter === 'draft')
-      return myDocs.filter((d) => d.status === 'draft');
+    if (filter === 'draft') return myDocs.filter((d) => d.status === 'draft');
     if (filter === 'sent') return myDocs.filter((d) => d.status === 'sent');
-    if (filter === 'approved')
-      return myDocs.filter((d) => d.status === 'approved');
-    if (filter === 'returned')
-      return myDocs.filter((d) => d.status === 'returned');
-    if (filter === 'rejected')
-      return myDocs.filter((d) => d.status === 'rejected');
+    if (filter === 'approved') return myDocs.filter((d) => d.status === 'approved');
+    if (filter === 'returned') return myDocs.filter((d) => d.status === 'returned');
+    if (filter === 'rejected') return myDocs.filter((d) => d.status === 'rejected');
     return [];
   }, [myDocs, filter]);
 
   const filteredIncomingDocs = useMemo(() => {
     if (filter === 'all') return incomingDocs;
-    if (filter === 'sent')
-      return incomingDocs.filter((d) => d.status === 'sent');
-    if (filter === 'approved')
-      return incomingDocs.filter((d) => d.status === 'approved');
-    if (filter === 'returned')
-      return incomingDocs.filter((d) => d.status === 'returned');
-    if (filter === 'rejected')
-      return incomingDocs.filter((d) => d.status === 'rejected');
+    if (filter === 'sent') return incomingDocs.filter((d) => d.status === 'sent');
+    if (filter === 'approved') return incomingDocs.filter((d) => d.status === 'approved');
+    if (filter === 'returned') return incomingDocs.filter((d) => d.status === 'returned');
+    if (filter === 'rejected') return incomingDocs.filter((d) => d.status === 'rejected');
     return [];
   }, [incomingDocs, filter]);
 
-  // Hisoblar
   const unreadIncomingDocs = incomingDocs.filter(
     (d) => !Array.isArray(d.readBy) || !d.readBy.some((r) => r.userId === user.id)
   ).length;
@@ -496,73 +498,79 @@ export default function Documents() {
             onChange={handleUpload}
             accept=".pdf,.xlsx,.xls,.xlsm,.csv,.docx,.doc,.txt,.md,.log,.png,.jpg,.jpeg,.gif,.webp,.svg"
           />
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload size={15} /> Fayl yuklash
-          </Button>
+          {canUploadFile && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={15} /> Fayl yuklash
+            </Button>
+          )}
         </>
       }
     >
       {/* ===== Yangi hujjat panel ===== */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #007AFF 0%, #AF52DE 100%)',
-          borderRadius: 18,
-          padding: '20px 22px',
-          marginBottom: 18,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          flexWrap: 'wrap',
-          boxShadow: '0 8px 24px rgba(0,122,255,0.25)',
-        }}
-      >
+      {canCreate && (
         <div
           style={{
-            width: 52,
-            height: 52,
-            borderRadius: 14,
-            background: 'rgba(255,255,255,0.2)',
-            color: '#fff',
-            display: 'grid',
-            placeItems: 'center',
-            flexShrink: 0,
+            background: 'linear-gradient(135deg, #007AFF 0%, #AF52DE 100%)',
+            borderRadius: 18,
+            padding: '20px 22px',
+            marginBottom: 18,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            flexWrap: 'wrap',
+            boxShadow: '0 8px 24px rgba(0,122,255,0.25)',
           }}
         >
-          <FileText size={24} />
-        </div>
-        <div style={{ flex: 1, minWidth: 220, color: '#fff' }}>
-          <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.3px' }}>
-            Yangi hujjat yaratish
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              background: 'rgba(255,255,255,0.2)',
+              color: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <FileText size={24} />
           </div>
-          <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>
-            Kiruvchi, chiquvchi, murojaat yoki ichki hujjat tayyorlang
-          </div>
-        </div>
-        <Dropdown
-          trigger={
-            <button
-              className="btn"
-              style={{
-                background: '#fff',
-                color: '#007AFF',
-                fontWeight: 600,
-                padding: '11px 20px',
-                fontSize: 14,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              }}
+          <div style={{ flex: 1, minWidth: 220, color: '#fff' }}>
+            <div
+              style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.3px' }}
             >
-              <Plus size={16} /> Yangi hujjat
-            </button>
-          }
-          items={newDocItems}
-          align="right"
-          width={260}
-        />
-      </div>
+              Yangi hujjat yaratish
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>
+              Kiruvchi, chiquvchi, murojaat yoki ichki hujjat tayyorlang
+            </div>
+          </div>
+          <Dropdown
+            trigger={
+              <button
+                className="btn"
+                style={{
+                  background: '#fff',
+                  color: '#007AFF',
+                  fontWeight: 600,
+                  padding: '11px 20px',
+                  fontSize: 14,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                }}
+              >
+                <Plus size={16} /> Yangi hujjat
+              </button>
+            }
+            items={newDocItems}
+            align="right"
+            width={260}
+          />
+        </div>
+      )}
 
       {/* ===== Filtrlar ===== */}
       <div
@@ -598,13 +606,18 @@ export default function Documents() {
         </div>
       )}
 
-      {/* ====== KELGAN FAYLLAR (regional/directorate/admin) ====== */}
+      {/* ====== KELGAN FAYLLAR ====== */}
       {!loading && isRecipientRole && filteredIncomingFiles.length > 0 && (
         <div className="card mb-4">
           <div className="between mb-3">
             <div
               className="card-title"
-              style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}
+              style={{
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
             >
               <Paperclip size={14} />
               Kelgan fayllar ({filteredIncomingFiles.length})
@@ -636,10 +649,7 @@ export default function Documents() {
                   >
                     {label}
                   </div>
-                  <div
-                    className="list-body"
-                    onClick={() => setOpenDoc(d)}
-                  >
+                  <div className="list-body" onClick={() => setOpenDoc(d)}>
                     <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                       <b>{d.name}</b>
                       <Badge color={st.color}>{st.label}</Badge>
@@ -660,28 +670,12 @@ export default function Documents() {
                     </button>
                     {canAct && (
                       <>
-                        <button
-                          className="icon-btn"
+                        <ApproveButton
                           onClick={() => openFileAction(d, 'approve')}
-                          title="Tasdiqlash"
-                          style={{
-                            background: 'rgba(52,199,89,0.12)',
-                            color: '#34C759',
-                          }}
-                        >
-                          <CheckCircle2 size={16} />
-                        </button>
-                        <button
-                          className="icon-btn"
+                        />
+                        <ReturnButton
                           onClick={() => openFileAction(d, 'return')}
-                          title="Qaytarish"
-                          style={{
-                            background: 'rgba(255,149,0,0.12)',
-                            color: '#FF9500',
-                          }}
-                        >
-                          <RotateCcw size={16} />
-                        </button>
+                        />
                       </>
                     )}
                   </div>
@@ -692,13 +686,18 @@ export default function Documents() {
         </div>
       )}
 
-      {/* ====== KELGAN HUJJATLAR (regional/directorate/admin) ====== */}
+      {/* ====== KELGAN HUJJATLAR ====== */}
       {!loading && isRecipientRole && filteredIncomingDocs.length > 0 && (
         <div className="card mb-4">
           <div className="between mb-3">
             <div
               className="card-title"
-              style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}
+              style={{
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
             >
               <Inbox size={14} />
               Kelgan hujjatlar ({filteredIncomingDocs.length})
@@ -779,90 +778,20 @@ export default function Documents() {
                       {d.summary.slice(0, 100)}
                       {d.summary.length > 100 ? '…' : ''}
                     </span>
-
-                    {d.status === 'approved' && d.approvedByName && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 12.5,
-                          color: '#1F8A3F',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        <CheckCircle2 size={13} />
-                        {d.approvedByName} tasdiqladi · {timeAgo(d.approvedAt)}
-                      </div>
-                    )}
-                    {d.status === 'returned' && d.returnReason && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          padding: '6px 10px',
-                          background: '#FFEBEA',
-                          borderRadius: 8,
-                          fontSize: 12.5,
-                          color: '#B22',
-                        }}
-                      >
-                        <b>↩ {d.returnedByName}:</b>{' '}
-                        {d.returnReason.slice(0, 100)}
-                      </div>
-                    )}
-                    {d.status === 'rejected' && d.rejectReason && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          padding: '6px 10px',
-                          background: '#FFEBEA',
-                          borderRadius: 8,
-                          fontSize: 12.5,
-                          color: '#B22',
-                        }}
-                      >
-                        <b>❌ {d.rejectedByName}:</b>{' '}
-                        {d.rejectReason.slice(0, 100)}
-                      </div>
-                    )}
                   </div>
 
                   <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
                     {canAct && (
                       <>
-                        <button
-                          className="icon-btn"
+                        <ApproveButton
                           onClick={() => openDocAction(d, 'approve')}
-                          title="Tasdiqlash"
-                          style={{
-                            background: 'rgba(52,199,89,0.12)',
-                            color: '#34C759',
-                          }}
-                        >
-                          <CheckCircle2 size={16} />
-                        </button>
-                        <button
-                          className="icon-btn"
+                        />
+                        <ReturnButton
                           onClick={() => openDocAction(d, 'return')}
-                          title="Qaytarish"
-                          style={{
-                            background: 'rgba(255,149,0,0.12)',
-                            color: '#FF9500',
-                          }}
-                        >
-                          <RotateCcw size={16} />
-                        </button>
-                        <button
-                          className="icon-btn"
+                        />
+                        <RejectButton
                           onClick={() => openDocAction(d, 'reject')}
-                          title="Bekor qilish"
-                          style={{
-                            background: 'rgba(255,59,48,0.12)',
-                            color: '#FF3B30',
-                          }}
-                        >
-                          <XCircle size={16} />
-                        </button>
+                        />
                       </>
                     )}
                     <button
@@ -886,7 +815,12 @@ export default function Documents() {
           <div className="between mb-3">
             <div
               className="card-title"
-              style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}
+              style={{
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
             >
               <Send size={14} />
               Men yuborgan hujjatlar ({filteredMyDocs.length})
@@ -934,63 +868,6 @@ export default function Documents() {
                       {d.typeLabel} · {d.recipients.length} qabul qiluvchi ·{' '}
                       {timeAgo(d.createdAt)}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 12.5,
-                        color: 'var(--ios-gray)',
-                        marginTop: 4,
-                        display: 'block',
-                      }}
-                    >
-                      {d.summary.slice(0, 100)}
-                      {d.summary.length > 100 ? '…' : ''}
-                    </span>
-
-                    {d.status === 'returned' && d.returnReason && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          padding: '6px 10px',
-                          background: '#FFEBEA',
-                          borderRadius: 8,
-                          fontSize: 12.5,
-                          color: '#B22',
-                        }}
-                      >
-                        <b>↩ {d.returnedByName}:</b>{' '}
-                        {d.returnReason.slice(0, 100)}
-                      </div>
-                    )}
-                    {d.status === 'rejected' && d.rejectReason && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          padding: '6px 10px',
-                          background: '#FFEBEA',
-                          borderRadius: 8,
-                          fontSize: 12.5,
-                          color: '#B22',
-                        }}
-                      >
-                        <b>❌ {d.rejectedByName}:</b>{' '}
-                        {d.rejectReason.slice(0, 100)}
-                      </div>
-                    )}
-                    {d.status === 'approved' && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 12.5,
-                          color: '#1F8A3F',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        <CheckCircle2 size={13} />
-                        {d.approvedByName} tasdiqladi · {timeAgo(d.approvedAt)}
-                      </div>
-                    )}
                   </div>
                   <Eye
                     size={16}
@@ -1042,7 +919,6 @@ export default function Documents() {
                     </div>
                     <span>
                       {d.sizeText || formatSize(d.size)} · {d.date}
-                      {d.returnReason && ` · Qaytarilgan`}
                     </span>
                     {d.returnReason && (
                       <div
@@ -1060,7 +936,7 @@ export default function Documents() {
                     )}
                   </div>
                   <div className="row" style={{ gap: 4 }}>
-                    {canSubmit && (
+                    {canSubmit && canUploadFile && (
                       <button
                         className="icon-btn"
                         onClick={() => submitFileForReview(d)}
@@ -1080,13 +956,7 @@ export default function Documents() {
                     >
                       <Eye size={16} />
                     </button>
-                    <button
-                      className="icon-btn"
-                      onClick={() => setConfirmDelete(d)}
-                      title="O‘chirish"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <DeleteButton onClick={() => setConfirmDelete(d)} />
                   </div>
                 </div>
               );
@@ -1106,37 +976,43 @@ export default function Documents() {
               : 'Bu filtrda hujjatlar yo‘q'}
           </b>
           <div style={{ marginBottom: 18 }}>
-            “Fayl yuklash” yoki “Yangi hujjat” orqali hujjat qo‘shing
+            {canCreate
+              ? '“Fayl yuklash” yoki “Yangi hujjat” orqali hujjat qo‘shing'
+              : 'Hozircha sizga tegishli hujjat yo‘q'}
           </div>
-          <div
-            style={{
-              display: 'inline-flex',
-              gap: 10,
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-            }}
-          >
-            <Button
-              variant="secondary"
-              onClick={() => fileInputRef.current?.click()}
+          {canCreate && (
+            <div
+              style={{
+                display: 'inline-flex',
+                gap: 10,
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+              }}
             >
-              <Upload size={15} /> Fayl yuklash
-            </Button>
-            <Dropdown
-              trigger={
-                <button className="btn btn-primary">
-                  <Plus size={15} /> Yangi hujjat
-                </button>
-              }
-              items={newDocItems}
-              align="center"
-              width={260}
-            />
-          </div>
+              {canUploadFile && (
+                <Button
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={15} /> Fayl yuklash
+                </Button>
+              )}
+              <Dropdown
+                trigger={
+                  <button className="btn btn-primary">
+                    <Plus size={15} /> Yangi hujjat
+                  </button>
+                }
+                items={newDocItems}
+                align="center"
+                width={260}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* ===== Fayl ko'ruvchi ===== */}
+      {/* Fayl ko'ruvchi */}
       {openDoc && (
         <FileViewer
           file={openDoc}
@@ -1147,7 +1023,7 @@ export default function Documents() {
         />
       )}
 
-      {/* ===== Hujjat tafsiloti ===== */}
+      {/* Hujjat tafsiloti */}
       {docDetail && (
         <Modal
           title={docDetail.number}
@@ -1159,26 +1035,32 @@ export default function Documents() {
                 Yopish
               </Button>
               {docDetail.status === 'sent' &&
-                isRecipientRole &&
-                docDetail.createdBy !== user.id && (
+                docDetail.createdBy !== user.id &&
+                (canApprove || canReturn || canReject) && (
                   <>
-                    <Button
-                      variant="danger"
-                      onClick={() => openDocAction(docDetail, 'reject')}
-                    >
-                      <XCircle size={14} /> Bekor
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => openDocAction(docDetail, 'return')}
-                    >
-                      <RotateCcw size={14} /> Qaytarish
-                    </Button>
-                    <Button
-                      onClick={() => openDocAction(docDetail, 'approve')}
-                    >
-                      <CheckCircle2 size={14} /> Tasdiqlash
-                    </Button>
+                    {canReject && (
+                      <Button
+                        variant="danger"
+                        onClick={() => openDocAction(docDetail, 'reject')}
+                      >
+                        <XCircle size={14} /> Bekor
+                      </Button>
+                    )}
+                    {canReturn && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => openDocAction(docDetail, 'return')}
+                      >
+                        <RotateCcw size={14} /> Qaytarish
+                      </Button>
+                    )}
+                    {canApprove && (
+                      <Button
+                        onClick={() => openDocAction(docDetail, 'approve')}
+                      >
+                        <CheckCircle2 size={14} /> Tasdiqlash
+                      </Button>
+                    )}
                   </>
                 )}
             </>
@@ -1195,7 +1077,6 @@ export default function Documents() {
                 {(DOC_STATUS[docDetail.status] || DOC_STATUS.draft).label}
               </Badge>
             </div>
-
             {docDetail.createdByOrg && (
               <div>
                 <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
@@ -1207,7 +1088,6 @@ export default function Documents() {
                 </div>
               </div>
             )}
-
             <div>
               <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                 Qisqacha mazmuni
@@ -1216,89 +1096,39 @@ export default function Documents() {
                 {docDetail.summary}
               </div>
             </div>
-
-            {docDetail.hashtags?.length > 0 && (
+            {docDetail.recipients?.length > 0 && (
               <div>
                 <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                  Heshteglar
+                  Qabul qiluvchilar ({docDetail.recipients.length})
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {docDetail.hashtags.map((t, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        background: 'rgba(0,122,255,0.1)',
-                        color: '#007AFF',
-                        padding: '3px 10px',
-                        borderRadius: 20,
-                        fontSize: 12.5,
-                      }}
-                    >
-                      #{t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                Qabul qiluvchilar ({docDetail.recipients.length})
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6,
-                  maxHeight: 200,
-                  overflowY: 'auto',
-                }}
-              >
-                {docDetail.recipients.map((r) => (
-                  <div
-                    key={r}
-                    className="row"
-                    style={{
-                      padding: '8px 10px',
-                      background: 'var(--ios-gray6)',
-                      borderRadius: 8,
-                      fontSize: 13,
-                      gap: 8,
-                    }}
-                  >
-                    <Building2 size={14} color="#007AFF" />
-                    <span>{unitFullName(r)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {docDetail.files?.length > 0 && (
-              <div>
-                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                  Biriktirilgan fayllar ({docDetail.files.length})
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {docDetail.files.map((f, i) => (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {docDetail.recipients.map((r) => (
                     <div
-                      key={i}
+                      key={r}
                       className="row"
                       style={{
-                        padding: '6px 10px',
+                        padding: '8px 10px',
                         background: 'var(--ios-gray6)',
                         borderRadius: 8,
                         fontSize: 13,
                         gap: 8,
                       }}
                     >
-                      <FileText size={14} />
-                      <span style={{ flex: 1 }}>{f.name}</span>
+                      <Building2 size={14} color="#007AFF" />
+                      <span>{unitFullName(r)}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
             {docDetail.status === 'approved' && docDetail.approvedByName && (
               <div
                 style={{
@@ -1320,22 +1150,8 @@ export default function Documents() {
                   <b>{docDetail.approvedByName}</b> ·{' '}
                   {new Date(docDetail.approvedAt).toLocaleString('uz-UZ')}
                 </div>
-                {docDetail.approvedComment && (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      padding: '6px 10px',
-                      background: '#fff',
-                      borderRadius: 6,
-                      fontSize: 12.5,
-                    }}
-                  >
-                    <MessageSquare size={11} /> {docDetail.approvedComment}
-                  </div>
-                )}
               </div>
             )}
-
             {docDetail.status === 'returned' && docDetail.returnReason && (
               <div
                 style={{
@@ -1365,14 +1181,12 @@ export default function Documents() {
                     borderRadius: 6,
                     color: '#B22',
                     fontSize: 13,
-                    lineHeight: 1.5,
                   }}
                 >
                   {docDetail.returnReason}
                 </div>
               </div>
             )}
-
             {docDetail.status === 'rejected' && docDetail.rejectReason && (
               <div
                 style={{
@@ -1402,14 +1216,12 @@ export default function Documents() {
                     borderRadius: 6,
                     color: '#B22',
                     fontSize: 13,
-                    lineHeight: 1.5,
                   }}
                 >
                   {docDetail.rejectReason}
                 </div>
               </div>
             )}
-
             {docDetail.readBy?.length > 0 && (
               <div>
                 <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
@@ -1436,16 +1248,11 @@ export default function Documents() {
                 </div>
               </div>
             )}
-
-            <div className="muted" style={{ fontSize: 12 }}>
-              Yaratilgan:{' '}
-              {new Date(docDetail.createdAt).toLocaleString('uz-UZ')}
-            </div>
           </div>
         </Modal>
       )}
 
-      {/* ===== Harakat modali ===== */}
+      {/* Harakat modali */}
       {actionDoc && actionType && (
         <Modal
           title={
@@ -1511,10 +1318,7 @@ export default function Documents() {
                 }}
               >
                 <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div>
-                  Tasdiqlansa, yuboruvchi xabar oladi va hujjat yakunlangan
-                  hisoblanadi.
-                </div>
+                <div>Tasdiqlansa, yuboruvchi xabar oladi.</div>
               </div>
             )}
             {actionType === 'return' && (
@@ -1530,11 +1334,11 @@ export default function Documents() {
                   gap: 8,
                 }}
               >
-                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div>
-                  Xato yoki kamchilik bo‘lsa — qaytaring. Sabab yuboruvchiga
-                  yuboriladi va u tuzatib qayta yuborishi mumkin.
-                </div>
+                <AlertTriangle
+                  size={16}
+                  style={{ flexShrink: 0, marginTop: 1 }}
+                />
+                <div>Sabab yuboruvchiga yuboriladi.</div>
               </div>
             )}
             {actionType === 'reject' && (
@@ -1556,7 +1360,6 @@ export default function Documents() {
                 </div>
               </div>
             )}
-
             <div
               style={{
                 padding: 10,
@@ -1573,7 +1376,6 @@ export default function Documents() {
                 Siz: <b>{user.name}</b> ({user.roleLabel})
               </span>
             </div>
-
             <div>
               <label
                 style={{
@@ -1606,7 +1408,6 @@ export default function Documents() {
                 }}
               />
             </div>
-
             {actionType !== 'approve' && (
               <div>
                 <div
@@ -1648,7 +1449,7 @@ export default function Documents() {
         </Modal>
       )}
 
-      {/* ===== Qaytarilgan fayl modali ===== */}
+      {/* Qaytarilgan fayl modali */}
       {returnInfo && (
         <Modal
           title="Qaytarilgan fayl"
@@ -1671,28 +1472,26 @@ export default function Documents() {
             </>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div
-              style={{
-                padding: 14,
-                background: '#FFEBEA',
-                border: '1px solid #FFC9C4',
-                borderRadius: 12,
-              }}
-            >
-              <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-                <RotateCcw size={16} color="#B22" />
-                <b style={{ color: '#B22' }}>Qaytarish sababi</b>
-              </div>
-              <div style={{ fontSize: 14, color: '#5A2020', lineHeight: 1.5 }}>
-                {returnInfo.returnReason}
-              </div>
+          <div
+            style={{
+              padding: 14,
+              background: '#FFEBEA',
+              border: '1px solid #FFC9C4',
+              borderRadius: 12,
+            }}
+          >
+            <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+              <RotateCcw size={16} color="#B22" />
+              <b style={{ color: '#B22' }}>Qaytarish sababi</b>
+            </div>
+            <div style={{ fontSize: 14, color: '#5A2020', lineHeight: 1.5 }}>
+              {returnInfo.returnReason}
             </div>
           </div>
         </Modal>
       )}
 
-      {/* ===== O'chirish modali ===== */}
+      {/* O'chirish modali */}
       {confirmDelete && (
         <Modal
           title="Faylni o‘chirish"

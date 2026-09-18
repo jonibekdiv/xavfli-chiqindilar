@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
+import { hasPermission } from './utils/permissions.js';
 
 import Login from './pages/Login.jsx';
 import CompanyDashboard from './pages/CompanyDashboard.jsx';
@@ -28,10 +29,13 @@ function HomeRouter() {
   return <Navigate to="/login" replace />;
 }
 
-function Guard({ children, roles }) {
+/** Ruxsat bo'lmasa — bosh sahifaga qaytaradi */
+function Guard({ children, action }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (action && !hasPermission(user.role, action)) {
+    return <Navigate to="/" replace />;
+  }
   return children;
 }
 
@@ -39,119 +43,32 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-
-      {/* Bosh sahifa — rolga qarab */}
       <Route path="/" element={<HomeRouter />} />
 
-      {/* ===== KORXONA ===== */}
-      <Route
-        path="/profile"
-        element={
-          <Guard roles={['company']}>
-            <CompanyProfile />
-          </Guard>
-        }
-      />
-      <Route
-        path="/wastes"
-        element={
-          <Guard roles={['company']}>
-            <WasteRegistry />
-          </Guard>
-        }
-      />
-      <Route
-        path="/quarterly"
-        element={
-          <Guard roles={['company']}>
-            <QuarterlyReport />
-          </Guard>
-        }
-      />
-      <Route
-        path="/annual"
-        element={
-          <Guard roles={['company']}>
-            <AnnualReport />
-          </Guard>
-        }
-      />
+      {/* Korxona */}
+      <Route path="/profile" element={<Guard action="profile.view_own"><CompanyProfile /></Guard>} />
+      <Route path="/wastes" element={<Guard action="waste.manage"><WasteRegistry /></Guard>} />
+      <Route path="/quarterly" element={<Guard action="report.view_own"><QuarterlyReport /></Guard>} />
+      <Route path="/annual" element={<Guard action="report.view_own"><AnnualReport /></Guard>} />
 
-      {/* ===== HUJJATLAR (umumiy) ===== */}
-     <Route
-  path="/documents"
-  element={
-    <Guard roles={['company', 'regional', 'directorate', 'admin']}>
-      <Documents />
-    </Guard>
-  }
-/>
-<Route
-  path="/documents/new"
-  element={
-    <Guard roles={['company', 'regional', 'directorate']}>
-      <NewDocument />
-    </Guard>
-  }
-/>
-      {/* ===== BILDIRISHNOMALAR (barcha rollar) ===== */}
+      {/* Hujjatlar */}
+      <Route path="/documents" element={<Guard action="doc.view"><Documents /></Guard>} />
+      <Route path="/documents/new" element={<Guard action="doc.create"><NewDocument /></Guard>} />
+
       <Route path="/notifications" element={<Notifications />} />
 
-      {/* ===== MINTAQAVIY ===== */}
-      <Route
-        path="/regional/reports"
-        element={
-          <Guard roles={['regional']}>
-            <RegionalReports />
-          </Guard>
-        }
-      />
-      <Route
-        path="/regional/files"
-        element={
-          <Guard roles={['regional']}>
-            <RegionalFiles />
-          </Guard>
-        }
-      />
+      {/* Mintaqaviy */}
+      <Route path="/regional/reports" element={<Guard action="report.view_region"><RegionalReports /></Guard>} />
+      <Route path="/regional/files" element={<Guard action="file.view_region"><RegionalFiles /></Guard>} />
 
-      {/* ===== DIREKSIYA ===== */}
-      <Route
-        path="/directorate/companies"
-        element={
-          <Guard roles={['directorate']}>
-            <RegionalDashboard />
-          </Guard>
-        }
-      />
-      <Route
-        path="/directorate/files"
-        element={
-          <Guard roles={['directorate']}>
-            <DirectorateFiles />
-          </Guard>
-        }
-      />
-      <Route
-        path="/directorate/analytics"
-        element={
-          <Guard roles={['directorate']}>
-            <Analytics />
-          </Guard>
-        }
-      />
+      {/* Direksiya */}
+      <Route path="/directorate/companies" element={<Guard action="data.view_all"><RegionalDashboard /></Guard>} />
+      <Route path="/directorate/files" element={<Guard action="file.view_all"><DirectorateFiles /></Guard>} />
+      <Route path="/directorate/analytics" element={<Guard action="analytics.view_all"><Analytics /></Guard>} />
 
-      {/* ===== ADMIN ===== */}
-      <Route
-        path="/admin"
-        element={
-          <Guard roles={['admin']}>
-            <AdminPanel />
-          </Guard>
-        }
-      />
+      {/* Admin */}
+      <Route path="/admin" element={<Guard action="system.configure"><AdminPanel /></Guard>} />
 
-      {/* 404 → bosh sahifa */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

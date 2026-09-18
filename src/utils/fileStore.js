@@ -56,7 +56,6 @@ export async function listFiles() {
   });
 }
 
-/** Faylning meta maydonlarini yangilash (blob'ga tegmasdan) */
 export async function updateFileMeta(id, patch) {
   const f = await getFile(id);
   if (!f) return false;
@@ -64,24 +63,32 @@ export async function updateFileMeta(id, patch) {
   return true;
 }
 
-/** Fayl tarixiga yangi voqea qo'shish */
 export async function appendHistory(id, entry) {
   const f = await getFile(id);
   if (!f) return false;
   const history = Array.isArray(f.history) ? f.history : [];
-  history.push({ ...entry, at: new Date().toISOString() });
+  history.push({ ...entry, at: entry.at || new Date().toISOString() });
   await saveFile({ ...f, history });
   return true;
 }
-/** Foydalanuvchiga kelgan fayllar (mintaqaviy/direksiya/admin) */
+
+/**
+ * Foydalanuvchiga KELGAN fayllar
+ *  - admin/directorate  → barcha yuborilgan fayllar
+ *  - regional           → faqat o'z hududidagi fayllar
+ *  - company            → bo'sh (o'z fayli "kelgan" emas)
+ */
 export async function listIncomingFiles(user) {
   const all = await listFiles();
   if (!user) return [];
 
+  const STATUSES = ['submitted', 'approved', 'returned'];
+
   if (user.role === 'admin' || user.role === 'directorate') {
+    // ✅ Direksiya BARCHA yuborilgan fayllarni ko'radi
     return all.filter(
       (f) =>
-        ['submitted', 'approved', 'returned'].includes(f.status) &&
+        STATUSES.includes(f.status) &&
         f.uploaderId !== user.id
     );
   }
@@ -90,10 +97,11 @@ export async function listIncomingFiles(user) {
     return all.filter(
       (f) =>
         f.region === user.region &&
-        ['submitted', 'approved', 'returned'].includes(f.status) &&
+        STATUSES.includes(f.status) &&
         f.uploaderId !== user.id
     );
   }
 
+  // company — o'zi yuborganlarini "kelgan" sifatida ko'rmaydi
   return [];
 }

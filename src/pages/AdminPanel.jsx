@@ -3,7 +3,11 @@ import Layout from '../components/Layout.jsx';
 import { Card, Badge, Button, Segmented, Modal, Input, Select } from '../components/UI.jsx';
 import { DEMO_USERS, REGIONS, WASTE_CLASSES } from '../data/mockData.js';
 import Icon from '../components/Icons.jsx';
-import { Plus, Pencil, Trash2, Shield, Users, MapPin } from 'lucide-react';
+import PermissionGate from '../components/PermissionGate.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useConfirm } from '../context/ConfirmContext.jsx';
+import { can, canAny } from '../utils/permissions.js';
+import { Plus, Pencil, Trash2, Shield, Users, MapPin, Lock } from 'lucide-react';
 
 const ROLE_OPTIONS = [
   { value: 'company', label: 'Korxona' },
@@ -34,11 +38,20 @@ const emptyUser = {
 };
 
 export default function AdminPanel() {
+  const { user } = useAuth();
+  const confirm = useConfirm();
+
+  // ===== RBAC: ruxsatlar =====
+  const canCreateUser = can(user, 'user.create');
+  const canEditUser = can(user, 'user.edit');
+  const canDeleteUser = can(user, 'user.delete');
+  const canViewAudit = can(user, 'system.audit');
+  const canConfigure = can(user, 'system.configure');
+
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [wasteTypes, setWasteTypes] = useState([]);
 
-  // Modallar
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [userForm, setUserForm] = useState(emptyUser);
@@ -49,7 +62,6 @@ export default function AdminPanel() {
   const [typeForm, setTypeForm] = useState({ name: '' });
   const [confirmDeleteType, setConfirmDeleteType] = useState(null);
 
-  // ===== Yuklash =====
   useEffect(() => {
     const savedUsers = JSON.parse(localStorage.getItem('crm_users') || 'null');
     if (savedUsers && Array.isArray(savedUsers) && savedUsers.length) {
@@ -86,20 +98,22 @@ export default function AdminPanel() {
 
   // ===== USER CRUD =====
   const openAddUser = () => {
+    if (!canCreateUser) return;
     setEditingUserId(null);
     setUserForm(emptyUser);
     setShowUserForm(true);
   };
 
-  const openEditUser = (user) => {
-    setEditingUserId(user.id);
+  const openEditUser = (u) => {
+    if (!canEditUser) return;
+    setEditingUserId(u.id);
     setUserForm({
-      name: user.name || '',
-      login: user.login || '',
-      password: user.password || '123456',
-      role: user.role || 'company',
-      region: user.region || REGIONS[0],
-      status: user.status || 'active',
+      name: u.name || '',
+      login: u.login || '',
+      password: u.password || '123456',
+      role: u.role || 'company',
+      region: u.region || REGIONS[0],
+      status: u.status || 'active',
     });
     setShowUserForm(true);
   };
@@ -109,6 +123,9 @@ export default function AdminPanel() {
       alert('F.I.Sh. va Login majburiy');
       return;
     }
+    if (editingUserId && !canEditUser) return;
+    if (!editingUserId && !canCreateUser) return;
+
     if (editingUserId) {
       const next = users.map((u) =>
         u.id === editingUserId
@@ -133,34 +150,37 @@ export default function AdminPanel() {
   };
 
   const doDeleteUser = () => {
-    if (!confirmDeleteUser) return;
+    if (!confirmDeleteUser || !canDeleteUser) return;
     persistUsers(users.filter((u) => u.id !== confirmDeleteUser.id));
     setConfirmDeleteUser(null);
   };
 
   // ===== WASTE TYPE CRUD =====
   const openAddType = () => {
+    if (!canConfigure) return;
     setEditingTypeId(null);
     setTypeForm({ name: '' });
     setShowTypeForm(true);
   };
 
   const openEditType = (t) => {
+    if (!canConfigure) return;
     setEditingTypeId(t.id);
     setTypeForm({ name: t.name });
     setShowTypeForm(true);
   };
 
   const saveType = () => {
+    if (!canConfigure) return;
     const name = typeForm.name.trim();
     if (!name) {
       alert('Chiqindi turi nomi majburiy');
       return;
     }
-    const duplicate = wasteTypes.find(
+    const dup = wasteTypes.find(
       (t) => t.name.toLowerCase() === name.toLowerCase() && t.id !== editingTypeId
     );
-    if (duplicate) {
+    if (dup) {
       alert('Bu nom allaqachon mavjud');
       return;
     }
@@ -178,12 +198,12 @@ export default function AdminPanel() {
   };
 
   const doDeleteType = () => {
-    if (!confirmDeleteType) return;
+    if (!confirmDeleteType || !canConfigure) return;
     persistTypes(wasteTypes.filter((t) => t.id !== confirmDeleteType.id));
     setConfirmDeleteType(null);
   };
 
-  // ===== Statistika: hududlar bo'yicha faol foydalanuvchilar =====
+  // ===== Statistika =====
   const regionStats = useMemo(() => {
     return REGIONS.map((r) => {
       const inRegion = users.filter((u) => u.region === r);
@@ -204,16 +224,15 @@ export default function AdminPanel() {
     { value: 'audit', label: 'Audit log' },
   ];
 
-  // Sarlavha tugmasi — tabga qarab
   const headerAction = () => {
-    if (tab === 'users') {
+    if (tab === 'users' && canCreateUser) {
       return (
         <Button size="sm" onClick={openAddUser}>
           <Plus size={15} /> Foydalanuvchi
         </Button>
       );
     }
-    if (tab === 'wasteTypes') {
+    if (tab === 'wasteTypes' && canConfigure) {
       return (
         <Button size="sm" onClick={openAddType}>
           <Plus size={15} /> Chiqindi turi
@@ -223,8 +242,27 @@ export default function AdminPanel() {
     return null;
   };
 
+  // Ruxsat yo'q bo'lsa — Admin panelni ko'rsatmaymiz
+  if (!canConfigure && !can(user, 'user.view') && !canViewAudit) {
+    return (
+      <Layout title="Ruxsat yo‘q" subtitle="Sizda bu bo‘limga kirish huquqi yo‘q">
+        <div className="empty">
+          <div className="empty-icon">
+            <Lock size={48} strokeWidth={1.5} />
+          </div>
+          <b>Kirish taqiqlangan</b>
+          <div>Bu bo‘limga faqat tizim administratori kira oladi</div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
-    <Layout title="Admin panel" subtitle="Tizim boshqaruvi" actions={headerAction()}>
+    <Layout
+      title="Admin panel"
+      subtitle="Tizim boshqaruvi"
+      actions={headerAction()}
+    >
       <div className="mb-4" style={{ overflowX: 'auto' }}>
         <Segmented value={tab} onChange={setTab} options={tabs} />
       </div>
@@ -255,7 +293,9 @@ export default function AdminPanel() {
                     </div>
                   </td>
                   <td className="mono">{u.login}</td>
-                  <td><Badge color="blue">{u.roleLabel || ROLE_LABELS[u.role]}</Badge></td>
+                  <td>
+                    <Badge color="blue">{u.roleLabel || ROLE_LABELS[u.role]}</Badge>
+                  </td>
                   <td>{u.region}</td>
                   <td>
                     <Badge color={u.status === 'active' ? 'green' : 'gray'}>
@@ -264,12 +304,24 @@ export default function AdminPanel() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <div className="row" style={{ justifyContent: 'flex-end', gap: 4 }}>
-                      <button className="icon-btn" onClick={() => openEditUser(u)} title="Tahrirlash">
-                        <Pencil size={15} />
-                      </button>
-                      <button className="icon-btn" onClick={() => setConfirmDeleteUser(u)} title="O‘chirish">
-                        <Trash2 size={15} />
-                      </button>
+                      {canEditUser && (
+                        <button
+                          className="icon-btn"
+                          onClick={() => openEditUser(u)}
+                          title="Tahrirlash"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                      )}
+                      {canDeleteUser && (
+                        <button
+                          className="icon-btn"
+                          onClick={() => setConfirmDeleteUser(u)}
+                          title="O‘chirish"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -311,9 +363,8 @@ export default function AdminPanel() {
               <div className="card-title" style={{ margin: 0 }}>
                 Hududlar bo‘yicha faol foydalanuvchilar
               </div>
-              <Badge color="green">Faol ro‘yxatdan o‘tgan</Badge>
+              <Badge color="green">Faol</Badge>
             </div>
-
             <div className="table-wrap" style={{ boxShadow: 'none' }}>
               <table>
                 <thead>
@@ -323,60 +374,41 @@ export default function AdminPanel() {
                     <th style={{ textAlign: 'right' }}>Faol</th>
                     <th style={{ textAlign: 'right' }}>Nofaol</th>
                     <th style={{ textAlign: 'right' }}>Jami</th>
-                    <th>Ulush</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {regionStats.map((r, i) => {
-                    const pct = totalUsers ? (r.active / totalUsers) * 100 : 0;
-                    return (
-                      <tr key={r.name}>
-                        <td className="mono" style={{ color: 'var(--ios-gray)' }}>{i + 1}</td>
-                        <td>
-                          <div className="row">
-                            <div
-                              className="list-icon"
-                              style={{
-                                width: 30,
-                                height: 30,
-                                background: 'rgba(255,59,48,0.1)',
-                                color: '#FF3B30',
-                              }}
-                            >
-                              <MapPin size={14} />
-                            </div>
-                            <b>{r.name}</b>
+                  {regionStats.map((r, i) => (
+                    <tr key={r.name}>
+                      <td className="mono" style={{ color: 'var(--ios-gray)' }}>
+                        {i + 1}
+                      </td>
+                      <td>
+                        <div className="row">
+                          <div
+                            className="list-icon"
+                            style={{
+                              width: 30,
+                              height: 30,
+                              background: 'rgba(255,59,48,0.1)',
+                              color: '#FF3B30',
+                            }}
+                          >
+                            <MapPin size={14} />
                           </div>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <Badge color={r.active > 0 ? 'green' : 'gray'}>{r.active}</Badge>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <Badge color={r.inactive > 0 ? 'red' : 'gray'}>{r.inactive}</Badge>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <b className="mono">{r.total}</b>
-                        </td>
-                        <td style={{ minWidth: 140 }}>
-                          <div className="row" style={{ gap: 8 }}>
-                            <div style={{ flex: 1 }}>
-                              <div className="progress">
-                                <div
-                                  style={{
-                                    width: `${pct}%`,
-                                    background: 'linear-gradient(90deg,#007AFF,#34C759)',
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <span className="mono" style={{ fontSize: 12, minWidth: 42, textAlign: 'right' }}>
-                              {pct.toFixed(1)}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          <b>{r.name}</b>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <Badge color={r.active > 0 ? 'green' : 'gray'}>{r.active}</Badge>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <Badge color={r.inactive > 0 ? 'red' : 'gray'}>{r.inactive}</Badge>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <b className="mono">{r.total}</b>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -396,7 +428,9 @@ export default function AdminPanel() {
 
           {wasteTypes.length === 0 ? (
             <div className="empty">
-              <div className="empty-icon"><Icon name="recycle" size={48} strokeWidth={1.5} /></div>
+              <div className="empty-icon">
+                <Icon name="recycle" size={48} strokeWidth={1.5} />
+              </div>
               <b>Chiqindi turlari yo‘q</b>
               <div>“Chiqindi turi” tugmasi orqali qo‘shing</div>
             </div>
@@ -406,7 +440,12 @@ export default function AdminPanel() {
                 <div key={t.id} className="list-item" style={{ cursor: 'default' }}>
                   <div
                     className="list-icon"
-                    style={{ background: 'rgba(52,199,89,0.12)', color: '#34C759', fontSize: 13, fontWeight: 700 }}
+                    style={{
+                      background: 'rgba(52,199,89,0.12)',
+                      color: '#34C759',
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
                   >
                     {i + 1}
                   </div>
@@ -414,12 +453,24 @@ export default function AdminPanel() {
                     <b>{t.name}</b>
                     <span>Qo‘shilgan: {t.createdAt || '—'}</span>
                   </div>
-                  <button className="icon-btn" onClick={() => openEditType(t)} title="Tahrirlash">
-                    <Pencil size={15} />
-                  </button>
-                  <button className="icon-btn" onClick={() => setConfirmDeleteType(t)} title="O‘chirish">
-                    <Trash2 size={15} />
-                  </button>
+                  {canConfigure && (
+                    <>
+                      <button
+                        className="icon-btn"
+                        onClick={() => openEditType(t)}
+                        title="Tahrirlash"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        onClick={() => setConfirmDeleteType(t)}
+                        title="O‘chirish"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -432,11 +483,19 @@ export default function AdminPanel() {
         <Card>
           <div className="card-title">Xavflilik sinflari</div>
           {WASTE_CLASSES.map((c) => (
-            <div key={c} className="list-item" style={{ borderBottom: '1px solid var(--ios-sep)' }}>
-              <Badge color={{ I: 'red', II: 'orange', III: 'yellow', IV: 'blue', V: 'green' }[c]}>
+            <div
+              key={c}
+              className="list-item"
+              style={{ borderBottom: '1px solid var(--ios-sep)' }}
+            >
+              <Badge
+                color={{ I: 'red', II: 'orange', III: 'yellow', IV: 'blue', V: 'green' }[c]}
+              >
                 Sinf {c}
               </Badge>
-              <div className="list-body"><span>Xavflilik toifasi {c}</span></div>
+              <div className="list-body">
+                <span>Xavflilik toifasi {c}</span>
+              </div>
             </div>
           ))}
         </Card>
@@ -444,37 +503,69 @@ export default function AdminPanel() {
 
       {/* ================= AUDIT ================= */}
       {tab === 'audit' && (
-        <div className="list">
-          {[
-            { who: 'Aziz Karimov', what: 'Q3 hisobotini taqdim etdi', when: '2026-10-05 14:22' },
-            { who: 'Dilshod Rahimov', what: 'Q3 hisobotini ko‘rib chiqdi', when: '2026-10-05 15:10' },
-            { who: 'O. Hazratqulov', what: 'Yillik hisobotni tasdiqladi', when: '2026-10-06 09:14' },
-            { who: 'Sardor Adminov', what: 'Yangi foydalanuvchi qo‘shdi', when: '2026-10-06 10:00' },
-          ].map((a, i) => (
-            <div key={i} className="list-item" style={{ cursor: 'default' }}>
-              <div className="list-icon"><Icon name="activity" size={20} /></div>
-              <div className="list-body">
-                <b>{a.who}</b>
-                <span>{a.what}</span>
+        <PermissionGate
+          action="system.audit"
+          fallback={
+            <div className="empty">
+              <div className="empty-icon">
+                <Lock size={48} strokeWidth={1.5} />
               </div>
-              <span className="muted" style={{ fontSize: 12 }}>{a.when}</span>
+              <b>Ruxsat yo‘q</b>
+              <div>Audit logni ko‘rish uchun huquqingiz yo‘q</div>
             </div>
-          ))}
-        </div>
+          }
+        >
+          <div className="list">
+            {[
+              { who: 'Aziz Karimov', what: 'Q3 hisobotini taqdim etdi', when: '2026-10-05 14:22' },
+              { who: 'Dilshod Rahimov', what: 'Q3 hisobotini ko‘rib chiqdi', when: '2026-10-05 15:10' },
+              { who: 'O. Hazratqulov', what: 'Yillik hisobotni tasdiqladi', when: '2026-10-06 09:14' },
+              { who: 'Sardor Adminov', what: 'Yangi foydalanuvchi qo‘shdi', when: '2026-10-06 10:00' },
+            ].map((a, i) => (
+              <div key={i} className="list-item" style={{ cursor: 'default' }}>
+                <div className="list-icon">
+                  <Icon name="activity" size={20} />
+                </div>
+                <div className="list-body">
+                  <b>{a.who}</b>
+                  <span>{a.what}</span>
+                </div>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {a.when}
+                </span>
+              </div>
+            ))}
+          </div>
+        </PermissionGate>
       )}
 
       {/* ================= MODAL: USER ================= */}
-      {showUserForm && (
+      {showUserForm && (canCreateUser || canEditUser) && (
         <Modal
           title={editingUserId ? 'Foydalanuvchini tahrirlash' : 'Yangi foydalanuvchi'}
-          subtitle={editingUserId ? 'Ma’lumotlarni o‘zgartiring' : 'Yangi foydalanuvchi ma’lumotlari'}
-          onClose={() => { setShowUserForm(false); setEditingUserId(null); }}
+          subtitle={
+            editingUserId
+              ? 'Ma’lumotlarni o‘zgartiring'
+              : 'Yangi foydalanuvchi ma’lumotlari'
+          }
+          onClose={() => {
+            setShowUserForm(false);
+            setEditingUserId(null);
+          }}
           actions={
             <>
-              <Button variant="secondary" onClick={() => { setShowUserForm(false); setEditingUserId(null); }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowUserForm(false);
+                  setEditingUserId(null);
+                }}
+              >
                 Bekor
               </Button>
-              <Button onClick={saveUser}>{editingUserId ? 'Saqlash' : 'Qo‘shish'}</Button>
+              <Button onClick={saveUser}>
+                {editingUserId ? 'Saqlash' : 'Qo‘shish'}
+              </Button>
             </>
           }
         >
@@ -484,7 +575,6 @@ export default function AdminPanel() {
                 label="F.I.Sh. *"
                 value={userForm.name}
                 onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                placeholder="Masalan: Aziz Karimov"
               />
             </div>
             <Input
@@ -497,34 +587,67 @@ export default function AdminPanel() {
               value={userForm.password}
               onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
             />
-            <Select label="Rol" value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-              {ROLE_OPTIONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+            <Select
+              label="Rol"
+              value={userForm.role}
+              onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+            >
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
             </Select>
-            <Select label="Hudud" value={userForm.region} onChange={(e) => setUserForm({ ...userForm, region: e.target.value })}>
-              {REGIONS.map((r) => (<option key={r}>{r}</option>))}
+            <Select
+              label="Hudud"
+              value={userForm.region}
+              onChange={(e) => setUserForm({ ...userForm, region: e.target.value })}
+            >
+              {REGIONS.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
             </Select>
             <div className="full">
-              <Select label="Holat" value={userForm.status} onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}>
+              <Select
+                label="Holat"
+                value={userForm.status}
+                onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}
+              >
                 <option value="active">Faol</option>
                 <option value="inactive">Nofaol</option>
               </Select>
             </div>
           </div>
-          <div style={{ marginTop: 14, padding: 12, background: 'var(--ios-gray6)', borderRadius: 10, fontSize: 12, color: 'var(--ios-gray)', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Shield size={14} /> Parolni o‘zgartirsangiz, foydalanuvchi yangi parol bilan kiradi.
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              background: 'var(--ios-gray6)',
+              borderRadius: 10,
+              fontSize: 12,
+              color: 'var(--ios-gray)',
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+            }}
+          >
+            <Shield size={14} /> Parolni o‘zgartirsangiz, foydalanuvchi yangi parol
+            bilan kiradi.
           </div>
         </Modal>
       )}
 
       {/* ================= MODAL: DELETE USER ================= */}
-      {confirmDeleteUser && (
+      {confirmDeleteUser && canDeleteUser && (
         <Modal
           title="Foydalanuvchini o‘chirish"
           subtitle={`${confirmDeleteUser.name} (${confirmDeleteUser.login})`}
           onClose={() => setConfirmDeleteUser(null)}
           actions={
             <>
-              <Button variant="secondary" onClick={() => setConfirmDeleteUser(null)}>Bekor</Button>
+              <Button variant="secondary" onClick={() => setConfirmDeleteUser(null)}>
+                Bekor
+              </Button>
               <Button variant="danger" onClick={doDeleteUser}>
                 <Trash2 size={14} /> O‘chirish
               </Button>
@@ -532,23 +655,36 @@ export default function AdminPanel() {
           }
         >
           <div style={{ fontSize: 14, color: 'var(--ios-text2)' }}>
-            Bu amalni ortga qaytarib bo‘lmaydi. Foydalanuvchi tizimga kira olmaydi.
+            Bu amalni ortga qaytarib bo‘lmaydi.
           </div>
         </Modal>
       )}
 
       {/* ================= MODAL: WASTE TYPE ================= */}
-      {showTypeForm && (
+      {showTypeForm && canConfigure && (
         <Modal
           title={editingTypeId ? 'Chiqindi turini tahrirlash' : 'Yangi chiqindi turi'}
-          subtitle={editingTypeId ? 'Nomni o‘zgartiring' : 'Yangi tur nomini kiriting'}
-          onClose={() => { setShowTypeForm(false); setEditingTypeId(null); }}
+          subtitle={
+            editingTypeId ? 'Nomni o‘zgartiring' : 'Yangi tur nomini kiriting'
+          }
+          onClose={() => {
+            setShowTypeForm(false);
+            setEditingTypeId(null);
+          }}
           actions={
             <>
-              <Button variant="secondary" onClick={() => { setShowTypeForm(false); setEditingTypeId(null); }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowTypeForm(false);
+                  setEditingTypeId(null);
+                }}
+              >
                 Bekor
               </Button>
-              <Button onClick={saveType}>{editingTypeId ? 'Saqlash' : 'Qo‘shish'}</Button>
+              <Button onClick={saveType}>
+                {editingTypeId ? 'Saqlash' : 'Qo‘shish'}
+              </Button>
             </>
           }
         >
@@ -563,14 +699,16 @@ export default function AdminPanel() {
       )}
 
       {/* ================= MODAL: DELETE WASTE TYPE ================= */}
-      {confirmDeleteType && (
+      {confirmDeleteType && canConfigure && (
         <Modal
           title="Chiqindi turini o‘chirish"
           subtitle={confirmDeleteType.name}
           onClose={() => setConfirmDeleteType(null)}
           actions={
             <>
-              <Button variant="secondary" onClick={() => setConfirmDeleteType(null)}>Bekor</Button>
+              <Button variant="secondary" onClick={() => setConfirmDeleteType(null)}>
+                Bekor
+              </Button>
               <Button variant="danger" onClick={doDeleteType}>
                 <Trash2 size={14} /> O‘chirish
               </Button>
@@ -578,7 +716,8 @@ export default function AdminPanel() {
           }
         >
           <div style={{ fontSize: 14, color: 'var(--ios-text2)' }}>
-            Bu turni o‘chirsangiz, yangi chiqindi qo‘shishda ro‘yxatda ko‘rinmaydi. Avval qo‘shilgan chiqindilarga ta’sir qilmaydi.
+            Bu turni o‘chirsangiz, yangi chiqindi qo‘shishda ro‘yxatda
+            ko‘rinmaydi.
           </div>
         </Modal>
       )}
