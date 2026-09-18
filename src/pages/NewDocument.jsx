@@ -5,14 +5,13 @@ import { Button } from '../components/UI.jsx';
 import RecipientsModal from '../components/RecipientsModal.jsx';
 import {
   Plus, FileText, X, Paperclip, Users, Link as LinkIcon, Tag,
-  ShieldCheck, CheckSquare, FileSignature, QrCode, Layers,
+  ShieldCheck, FileSignature, QrCode, Layers,
 } from 'lucide-react';
 import { saveDoc, genDocNumber } from '../utils/docStore.js';
-import { unitFullName } from '../data/orgUnits.js';
+import { saveFile } from '../utils/fileStore.js';
+import { recipientLabel } from '../data/orgUnits.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirm } from '../context/ConfirmContext.jsx';
-import { recipientLabel } from '../data/orgUnits.js';
-// O'chirish: import { unitFullName } from '../data/orgUnits.js';
 
 const DOC_TYPES = {
   kiruvchi: { label: 'Kiruvchi hujjat', color: '#007AFF', icon: '📥' },
@@ -37,6 +36,13 @@ const labelStyle = {
   letterSpacing: '0.3px',
   marginBottom: 6,
 };
+
+function formatSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
 
 function Toggle({ label, checked, onChange, icon: Icon }) {
   return (
@@ -94,7 +100,8 @@ export default function NewDocument() {
     qr: false,
     signature: false,
   });
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState([]); // {id, name, size, sizeText, type}
+  const [uploading, setUploading] = useState(false);
   const [recipients, setRecipients] = useState([]);
   const [showRecipients, setShowRecipients] = useState(false);
   const fileRef = useRef(null);
@@ -118,13 +125,57 @@ export default function NewDocument() {
   const removeHashtag = (i) =>
     setForm({ ...form, hashtags: form.hashtags.filter((_, idx) => idx !== i) });
 
-  const handleFiles = (e) => {
-    const f = Array.from(e.target.files || []);
-    setFiles((prev) => [
-      ...prev,
-      ...f.map((x) => ({ name: x.name, size: x.size })),
-    ]);
+  // ===== FAYLLARNI YUKLASH =====
+  // Fayllar IndexedDB'ga (fileStore) saqlanadi, hujjatda faqat metadata saqlanadi
+  const handleFiles = async (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length === 0) return;
+    setUploading(true);
+
+    const savedMeta = [];
+    for (const file of picked) {
+      const id = 'f' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const now = new Date().toISOString();
+
+      // 1) Faylning o'zini IndexedDB'ga saqlash (blob bilan)
+      await saveFile({
+        id,
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        sizeText: formatSize(file.size),
+        date: now.slice(0, 10),
+        blob: file,
+        uploaderId: user.id,
+        uploaderName: user.name,
+        company: user.organization || user.name,
+        region: user.region,
+        status: 'draft',
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedBy: null,
+        reviewedByName: null,
+        returnReason: null,
+        history: [{ action: 'created', by: user.id, byName: user.name, at: now }],
+      });
+
+      // 2) Hujjatga faqat metadata biriktiramiz
+      savedMeta.push({
+        id,
+        name: file.name,
+        size: file.size,
+        sizeText: formatSize(file.size),
+        type: file.type,
+      });
+    }
+
+    setFiles((prev) => [...prev, ...savedMeta]);
+    setUploading(false);
     e.target.value = '';
+  };
+
+  const removeFile = (id) => {
+    setFiles(files.filter((f) => f.id !== id));
   };
 
   const save = async (asDraft = false) => {
@@ -160,13 +211,14 @@ export default function NewDocument() {
       xdfu: form.xdfu,
       qr: form.qr,
       signature: form.signature,
-      files,
+      files, // { id, name, size, sizeText, type }
       recipients,
       status: asDraft ? 'draft' : 'sent',
       createdAt: new Date().toISOString(),
       createdBy: user.id,
       createdByName: user.name,
-      createdByOrg: user.organization,
+      createdByOrg: user.organization || user.name,
+      createdByRegion: user.region,
     };
     saveDoc(doc);
 
@@ -282,7 +334,12 @@ export default function NewDocument() {
           <label style={labelStyle}>Hujjat heshteglari</label>
           {form.hashtags.length > 0 && (
             <div
-              style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}
+              style={{
+                display: 'flex',
+                gap: 8,
+                marginBottom: 8,
+                flexWrap: 'wrap',
+              }}
             >
               {form.hashtags.map((t, i) => (
                 <span
@@ -372,86 +429,85 @@ export default function NewDocument() {
         </div>
 
         {/* Qabul qiluvchilar */}
-        {/* Qabul qiluvchilar */}
-<div style={{ marginBottom: 18 }}>
-  <label style={labelStyle}>
-    Qabul qiluvchilar{' '}
-    {recipients.length > 0 && (
-      <span
-        style={{
-          marginLeft: 6,
-          padding: '2px 8px',
-          background: 'rgba(52,199,89,0.14)',
-          color: '#1F8A3F',
-          borderRadius: 10,
-          fontSize: 11,
-        }}
-      >
-        {recipients.length} ta
-      </span>
-    )}
-  </label>
+        <div style={{ marginBottom: 18 }}>
+          <label style={labelStyle}>
+            Qabul qiluvchilar{' '}
+            {recipients.length > 0 && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  padding: '2px 8px',
+                  background: 'rgba(52,199,89,0.14)',
+                  color: '#1F8A3F',
+                  borderRadius: 10,
+                  fontSize: 11,
+                }}
+              >
+                {recipients.length} ta
+              </span>
+            )}
+          </label>
 
-  <div
-    style={{
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: 6,
-      marginBottom: 10,
-      maxHeight: 220,
-      overflowY: 'auto',
-    }}
-  >
-    {recipients.length === 0 ? (
-      <span className="muted" style={{ fontSize: 13 }}>
-        Hech kim tanlanmagan
-      </span>
-    ) : (
-      recipients.map((id) => (
-        <span
-          key={id}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '5px 10px',
-            background: 'rgba(52,199,89,0.12)',
-            color: '#1F8A3F',
-            borderRadius: 20,
-            fontSize: 12.5,
-            fontWeight: 500,
-          }}
-        >
-          {recipientLabel(id)}
-          <button
-            onClick={() =>
-              setRecipients(recipients.filter((r) => r !== id))
-            }
+          <div
             style={{
-              border: 'none',
-              background: 'transparent',
-              color: '#1F8A3F',
-              cursor: 'pointer',
-              padding: 0,
-              display: 'grid',
-              placeItems: 'center',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+              marginBottom: 10,
+              maxHeight: 220,
+              overflowY: 'auto',
             }}
           >
-            <X size={12} />
-          </button>
-        </span>
-      ))
-    )}
-  </div>
+            {recipients.length === 0 ? (
+              <span className="muted" style={{ fontSize: 13 }}>
+                Hech kim tanlanmagan
+              </span>
+            ) : (
+              recipients.map((id) => (
+                <span
+                  key={id}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 10px',
+                    background: 'rgba(52,199,89,0.12)',
+                    color: '#1F8A3F',
+                    borderRadius: 20,
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                  }}
+                >
+                  {recipientLabel(id)}
+                  <button
+                    onClick={() =>
+                      setRecipients(recipients.filter((r) => r !== id))
+                    }
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#1F8A3F',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
 
-  <Button
-    variant="secondary"
-    onClick={() => setShowRecipients(true)}
-    type="button"
-  >
-    <Users size={15} /> Qabul qiluvchilarni tanlash
-  </Button>
-</div>
+          <Button
+            variant="secondary"
+            onClick={() => setShowRecipients(true)}
+            type="button"
+          >
+            <Users size={15} /> Qabul qiluvchilarni tanlash
+          </Button>
+        </div>
 
         {/* Fayllar */}
         <div style={{ marginBottom: 22 }}>
@@ -465,36 +521,48 @@ export default function NewDocument() {
           />
           {files.length > 0 && (
             <div
-              style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                marginBottom: 8,
+              }}
             >
-              {files.map((f, i) => (
-                <span
-                  key={i}
+              {files.map((f) => (
+                <div
+                  key={f.id}
                   style={{
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 10px',
+                    gap: 8,
+                    padding: '8px 12px',
                     background: 'var(--ios-gray6)',
                     borderRadius: 10,
-                    fontSize: 12.5,
+                    fontSize: 13,
                   }}
                 >
-                  <Paperclip size={12} /> {f.name}
+                  <Paperclip size={14} color="var(--ios-gray)" />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.name}
+                  </span>
+                  <span className="muted" style={{ fontSize: 11.5 }}>
+                    {f.sizeText}
+                  </span>
                   <button
-                    onClick={() =>
-                      setFiles(files.filter((_, idx) => idx !== i))
-                    }
+                    onClick={() => removeFile(f.id)}
                     style={{
                       border: 'none',
                       background: 'transparent',
                       cursor: 'pointer',
                       padding: 0,
+                      color: 'var(--ios-gray)',
+                      display: 'grid',
+                      placeItems: 'center',
                     }}
                   >
-                    <X size={12} />
+                    <X size={14} />
                   </button>
-                </span>
+                </div>
               ))}
             </div>
           )}
@@ -503,8 +571,10 @@ export default function NewDocument() {
               variant="secondary"
               onClick={() => fileRef.current?.click()}
               type="button"
+              disabled={uploading}
             >
-              <Paperclip size={15} /> Fayl biriktirish
+              <Paperclip size={15} />{' '}
+              {uploading ? 'Yuklanmoqda...' : 'Fayl biriktirish'}
             </Button>
             <Button variant="secondary" type="button">
               <FileText size={15} /> Ilovalar

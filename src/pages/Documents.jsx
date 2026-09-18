@@ -15,10 +15,11 @@ import {
   Upload, Eye, Send, RotateCcw, CheckCircle2, AlertTriangle,
   FileText, Building2, Plus, Inbox, FileSignature,
   XCircle, ShieldCheck, User as UserIcon, MessageSquare, Paperclip,
+  Trash2,
 } from 'lucide-react';
 import {
   saveFile, listFiles, deleteFile, updateFileMeta, appendHistory,
-  listIncomingFiles,
+  listIncomingFiles, getFile,
 } from '../utils/fileStore.js';
 import {
   listMyDocs, listIncomingDocs,
@@ -97,6 +98,10 @@ export default function Documents() {
   const [actionType, setActionType] = useState(null);
   const [actionReason, setActionReason] = useState('');
   const [filter, setFilter] = useState('all');
+
+  // ===== YANGI: biriktirilgan faylni ochish uchun =====
+  const [openAttached, setOpenAttached] = useState(null);
+
   const fileInputRef = useRef(null);
 
   const newDocItems = [
@@ -168,6 +173,35 @@ export default function Documents() {
     load();
     // eslint-disable-next-line
   }, [user.id, user.role]);
+
+  // ===== YANGI: biriktirilgan faylni ochish =====
+  const openAttachedFile = async (fileMeta) => {
+    if (!fileMeta?.id) {
+      await confirm({
+        title: 'Fayl topilmadi',
+        text: 'Bu fayl eski formatda saqlangan, ko‘rish imkonsiz.',
+        confirmText: 'Tushunarli',
+        hideCancel: true,
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const stored = await getFile(fileMeta.id);
+    if (stored) {
+      // Modal yopiladi, fayl ochiladi
+      setDocDetail(null);
+      setOpenAttached(stored);
+    } else {
+      await confirm({
+        title: 'Fayl topilmadi',
+        text: 'Fayl IndexedDB’dan topilmadi. Ehtimol o‘chirilgan.',
+        confirmText: 'Tushunarli',
+        hideCancel: true,
+        variant: 'warning',
+      });
+    }
+  };
 
   // ===== Fayl yuklash =====
   const handleUpload = async (e) => {
@@ -1012,7 +1046,7 @@ export default function Documents() {
         </div>
       )}
 
-      {/* Fayl ko'ruvchi */}
+      {/* Fayl ko'ruvchi (mening fayllarim uchun) */}
       {openDoc && (
         <FileViewer
           file={openDoc}
@@ -1024,7 +1058,7 @@ export default function Documents() {
       )}
 
       {/* ============================================ */}
-      {/* HUJJAT TAFSILOTI — 4.2 va 4.3 QO'LLANDI */}
+      {/* HUJJAT TAFSILOTI */}
       {/* ============================================ */}
       {docDetail && (
         <Modal
@@ -1131,9 +1165,7 @@ export default function Documents() {
               </div>
             </div>
 
-            {/* ============================================ */}
-            {/* 4.3 — QABUL QILUVCHILAR (xodim + filial farqi bilan) */}
-            {/* ============================================ */}
+            {/* Qabul qiluvchilar */}
             {docDetail.recipients?.length > 0 && (
               <div>
                 <div
@@ -1209,7 +1241,9 @@ export default function Documents() {
               </div>
             )}
 
-            {/* Biriktirilgan fayllar */}
+            {/* ============================================ */}
+            {/* YANGI: BIRIKTIRILGAN FAYLLAR — BOSILADIGAN */}
+            {/* ============================================ */}
             {docDetail.files?.length > 0 && (
               <div>
                 <div
@@ -1225,22 +1259,90 @@ export default function Documents() {
                     gap: 6,
                   }}
                 >
-                  {docDetail.files.map((f, i) => (
-                    <div
-                      key={i}
-                      className="row"
-                      style={{
-                        padding: '6px 10px',
-                        background: 'var(--ios-gray6)',
-                        borderRadius: 8,
-                        fontSize: 13,
-                        gap: 8,
-                      }}
-                    >
-                      <FileText size={14} />
-                      <span style={{ flex: 1 }}>{f.name}</span>
-                    </div>
-                  ))}
+                  {docDetail.files.map((f, i) => {
+                    const clickable = !!f.id;
+                    return (
+                      <div
+                        key={f.id || i}
+                        onClick={() => clickable && openAttachedFile(f)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '10px 12px',
+                          background: 'var(--ios-gray6)',
+                          borderRadius: 10,
+                          fontSize: 13,
+                          cursor: clickable ? 'pointer' : 'default',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (clickable)
+                            e.currentTarget.style.background =
+                              'var(--ios-gray5)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (clickable)
+                            e.currentTarget.style.background =
+                              'var(--ios-gray6)';
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            background: 'rgba(0,122,255,0.12)',
+                            color: '#007AFF',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <FileText size={16} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {f.name}
+                          </div>
+                          {f.sizeText && (
+                            <div
+                              style={{
+                                fontSize: 11.5,
+                                color: 'var(--ios-gray)',
+                                marginTop: 1,
+                              }}
+                            >
+                              {f.sizeText}
+                            </div>
+                          )}
+                        </div>
+                        {clickable ? (
+                          <Eye
+                            size={16}
+                            style={{
+                              color: 'var(--ios-gray3)',
+                              flexShrink: 0,
+                            }}
+                          />
+                        ) : (
+                          <span
+                            className="muted"
+                            style={{ fontSize: 11, flexShrink: 0 }}
+                          >
+                            eski
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1428,6 +1530,17 @@ export default function Documents() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* ============================================ */}
+      {/* YANGI: BIRIKTIRILGAN FAYLNI KO'RISH */}
+      {/* (Hujjat tafsiloti modal yopilganda ham ochiq turadi) */}
+      {/* ============================================ */}
+      {openAttached && (
+        <FileViewer
+          file={openAttached}
+          onClose={() => setOpenAttached(null)}
+        />
       )}
 
       {/* Harakat modali */}
