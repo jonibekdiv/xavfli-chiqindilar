@@ -11,6 +11,8 @@ import { saveDoc, genDocNumber } from '../utils/docStore.js';
 import { unitFullName } from '../data/orgUnits.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirm } from '../context/ConfirmContext.jsx';
+import { recipientLabel } from '../data/orgUnits.js';
+// O'chirish: import { unitFullName } from '../data/orgUnits.js';
 
 const DOC_TYPES = {
   kiruvchi: { label: 'Kiruvchi hujjat', color: '#007AFF', icon: '📥' },
@@ -370,58 +372,86 @@ export default function NewDocument() {
         </div>
 
         {/* Qabul qiluvchilar */}
-        <div style={{ marginBottom: 18 }}>
-          <label style={labelStyle}>Qabul qiluvchilar</label>
-          <div
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}
+        {/* Qabul qiluvchilar */}
+<div style={{ marginBottom: 18 }}>
+  <label style={labelStyle}>
+    Qabul qiluvchilar{' '}
+    {recipients.length > 0 && (
+      <span
+        style={{
+          marginLeft: 6,
+          padding: '2px 8px',
+          background: 'rgba(52,199,89,0.14)',
+          color: '#1F8A3F',
+          borderRadius: 10,
+          fontSize: 11,
+        }}
+      >
+        {recipients.length} ta
+      </span>
+    )}
+  </label>
+
+  <div
+    style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 10,
+      maxHeight: 220,
+      overflowY: 'auto',
+    }}
+  >
+    {recipients.length === 0 ? (
+      <span className="muted" style={{ fontSize: 13 }}>
+        Hech kim tanlanmagan
+      </span>
+    ) : (
+      recipients.map((id) => (
+        <span
+          key={id}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 10px',
+            background: 'rgba(52,199,89,0.12)',
+            color: '#1F8A3F',
+            borderRadius: 20,
+            fontSize: 12.5,
+            fontWeight: 500,
+          }}
+        >
+          {recipientLabel(id)}
+          <button
+            onClick={() =>
+              setRecipients(recipients.filter((r) => r !== id))
+            }
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: '#1F8A3F',
+              cursor: 'pointer',
+              padding: 0,
+              display: 'grid',
+              placeItems: 'center',
+            }}
           >
-            {recipients.length === 0 ? (
-              <span className="muted" style={{ fontSize: 13 }}>
-                Hech kim tanlanmagan
-              </span>
-            ) : (
-              recipients.map((id) => (
-                <span
-                  key={id}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '5px 10px',
-                    background: 'rgba(52,199,89,0.12)',
-                    color: '#1F8A3F',
-                    borderRadius: 20,
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                  }}
-                >
-                  {unitFullName(id)}
-                  <button
-                    onClick={() =>
-                      setRecipients(recipients.filter((r) => r !== id))
-                    }
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      color: '#1F8A3F',
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))
-            )}
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => setShowRecipients(true)}
-            type="button"
-          >
-            <Users size={15} /> Qabul qiluvchilarni tanlash
-          </Button>
-        </div>
+            <X size={12} />
+          </button>
+        </span>
+      ))
+    )}
+  </div>
+
+  <Button
+    variant="secondary"
+    onClick={() => setShowRecipients(true)}
+    type="button"
+  >
+    <Users size={15} /> Qabul qiluvchilarni tanlash
+  </Button>
+</div>
 
         {/* Fayllar */}
         <div style={{ marginBottom: 22 }}>

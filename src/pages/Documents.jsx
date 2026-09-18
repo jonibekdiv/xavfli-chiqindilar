@@ -28,7 +28,7 @@ import { pushNotification } from '../utils/notify.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirm } from '../context/ConfirmContext.jsx';
 import { FILE_STATUS } from '../data/mockData.js';
-import { unitFullName } from '../data/orgUnits.js';
+import { recipientLabel, findRecipient } from '../data/orgUnits.js';
 import { canAny, can } from '../utils/permissions.js';
 
 function formatSize(bytes) {
@@ -1023,17 +1023,32 @@ export default function Documents() {
         />
       )}
 
-      {/* Hujjat tafsiloti */}
+      {/* ============================================ */}
+      {/* HUJJAT TAFSILOTI — 4.2 va 4.3 QO'LLANDI */}
+      {/* ============================================ */}
       {docDetail && (
         <Modal
           title={docDetail.number}
           subtitle={`${docDetail.typeLabel} · ${docDetail.journal}`}
           onClose={() => setDocDetail(null)}
           actions={
-            <>
-              <Button variant="secondary" onClick={() => setDocDetail(null)}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns:
+                  'repeat(auto-fit, minmax(140px, 1fr))',
+                gap: 10,
+                width: '100%',
+              }}
+            >
+              <Button
+                variant="secondary"
+                onClick={() => setDocDetail(null)}
+                style={{ width: '100%' }}
+              >
                 Yopish
               </Button>
+
               {docDetail.status === 'sent' &&
                 docDetail.createdBy !== user.id &&
                 (canApprove || canReturn || canReject) && (
@@ -1042,6 +1057,7 @@ export default function Documents() {
                       <Button
                         variant="danger"
                         onClick={() => openDocAction(docDetail, 'reject')}
+                        style={{ width: '100%' }}
                       >
                         <XCircle size={14} /> Bekor
                       </Button>
@@ -1050,6 +1066,7 @@ export default function Documents() {
                       <Button
                         variant="secondary"
                         onClick={() => openDocAction(docDetail, 'return')}
+                        style={{ width: '100%' }}
                       >
                         <RotateCcw size={14} /> Qaytarish
                       </Button>
@@ -1057,29 +1074,41 @@ export default function Documents() {
                     {canApprove && (
                       <Button
                         onClick={() => openDocAction(docDetail, 'approve')}
+                        style={{ width: '100%' }}
                       >
                         <CheckCircle2 size={14} /> Tasdiqlash
                       </Button>
                     )}
                   </>
                 )}
-            </>
+            </div>
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Holat */}
             <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+              <div
+                className="muted"
+                style={{ fontSize: 12, marginBottom: 4 }}
+              >
                 Holat
               </div>
               <Badge
-                color={(DOC_STATUS[docDetail.status] || DOC_STATUS.draft).color}
+                color={
+                  (DOC_STATUS[docDetail.status] || DOC_STATUS.draft).color
+                }
               >
                 {(DOC_STATUS[docDetail.status] || DOC_STATUS.draft).label}
               </Badge>
             </div>
+
+            {/* Yuboruvchi */}
             {docDetail.createdByOrg && (
               <div>
-                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                <div
+                  className="muted"
+                  style={{ fontSize: 12, marginBottom: 4 }}
+                >
                   Yuboruvchi
                 </div>
                 <div className="row" style={{ gap: 8, fontSize: 13.5 }}>
@@ -1088,17 +1117,29 @@ export default function Documents() {
                 </div>
               </div>
             )}
+
+            {/* Qisqacha mazmuni */}
             <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+              <div
+                className="muted"
+                style={{ fontSize: 12, marginBottom: 4 }}
+              >
                 Qisqacha mazmuni
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.5 }}>
                 {docDetail.summary}
               </div>
             </div>
+
+            {/* ============================================ */}
+            {/* 4.3 — QABUL QILUVCHILAR (xodim + filial farqi bilan) */}
+            {/* ============================================ */}
             {docDetail.recipients?.length > 0 && (
               <div>
-                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                <div
+                  className="muted"
+                  style={{ fontSize: 12, marginBottom: 6 }}
+                >
                   Qabul qiluvchilar ({docDetail.recipients.length})
                 </div>
                 <div
@@ -1106,29 +1147,105 @@ export default function Documents() {
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 6,
-                    maxHeight: 200,
+                    maxHeight: 240,
                     overflowY: 'auto',
                   }}
                 >
-                  {docDetail.recipients.map((r) => (
+                  {docDetail.recipients.map((rid) => {
+                    const r = findRecipient(rid);
+                    if (!r) return null;
+                    const isStaff = r.type === 'staff';
+                    return (
+                      <div
+                        key={rid}
+                        className="row"
+                        style={{
+                          padding: '8px 10px',
+                          background: 'var(--ios-gray6)',
+                          borderRadius: 8,
+                          fontSize: 13,
+                          gap: 8,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 8,
+                            background: isStaff
+                              ? 'rgba(0,122,255,0.12)'
+                              : 'rgba(175,82,222,0.12)',
+                            color: isStaff ? '#007AFF' : '#AF52DE',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isStaff ? (
+                            <UserIcon size={14} />
+                          ) : (
+                            <Building2 size={14} />
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 500 }}>{r.name}</div>
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: 'var(--ios-gray)',
+                              marginTop: 2,
+                            }}
+                          >
+                            {isStaff
+                              ? `${r.position} · ${r.unitName} · ${r.region}`
+                              : `${r.region}`}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Biriktirilgan fayllar */}
+            {docDetail.files?.length > 0 && (
+              <div>
+                <div
+                  className="muted"
+                  style={{ fontSize: 12, marginBottom: 6 }}
+                >
+                  Biriktirilgan fayllar ({docDetail.files.length})
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
+                  {docDetail.files.map((f, i) => (
                     <div
-                      key={r}
+                      key={i}
                       className="row"
                       style={{
-                        padding: '8px 10px',
+                        padding: '6px 10px',
                         background: 'var(--ios-gray6)',
                         borderRadius: 8,
                         fontSize: 13,
                         gap: 8,
                       }}
                     >
-                      <Building2 size={14} color="#007AFF" />
-                      <span>{unitFullName(r)}</span>
+                      <FileText size={14} />
+                      <span style={{ flex: 1 }}>{f.name}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+
+            {/* Tasdiqlangan */}
             {docDetail.status === 'approved' && docDetail.approvedByName && (
               <div
                 style={{
@@ -1150,8 +1267,23 @@ export default function Documents() {
                   <b>{docDetail.approvedByName}</b> ·{' '}
                   {new Date(docDetail.approvedAt).toLocaleString('uz-UZ')}
                 </div>
+                {docDetail.approvedComment && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      padding: '6px 10px',
+                      background: '#fff',
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <MessageSquare size={11} /> {docDetail.approvedComment}
+                  </div>
+                )}
               </div>
             )}
+
+            {/* Qaytarilgan */}
             {docDetail.status === 'returned' && docDetail.returnReason && (
               <div
                 style={{
@@ -1181,12 +1313,15 @@ export default function Documents() {
                     borderRadius: 6,
                     color: '#B22',
                     fontSize: 13,
+                    lineHeight: 1.5,
                   }}
                 >
                   {docDetail.returnReason}
                 </div>
               </div>
             )}
+
+            {/* Bekor qilingan */}
             {docDetail.status === 'rejected' && docDetail.rejectReason && (
               <div
                 style={{
@@ -1216,18 +1351,30 @@ export default function Documents() {
                     borderRadius: 6,
                     color: '#B22',
                     fontSize: 13,
+                    lineHeight: 1.5,
                   }}
                 >
                   {docDetail.rejectReason}
                 </div>
               </div>
             )}
+
+            {/* O'qiganlar */}
             {docDetail.readBy?.length > 0 && (
               <div>
-                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                <div
+                  className="muted"
+                  style={{ fontSize: 12, marginBottom: 6 }}
+                >
                   O‘qiganlar ({docDetail.readBy.length})
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
                   {docDetail.readBy.map((r, i) => (
                     <div
                       key={i}
@@ -1248,6 +1395,37 @@ export default function Documents() {
                 </div>
               </div>
             )}
+
+            {/* Meta */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gap: 8,
+                padding: 12,
+                background: 'var(--ios-gray6)',
+                borderRadius: 10,
+                fontSize: 12,
+              }}
+            >
+              <div>
+                <div className="muted">XDFU/DSP</div>
+                <b>{docDetail.xdfu ? 'Ha' : 'Yo‘q'}</b>
+              </div>
+              <div>
+                <div className="muted">QR kod</div>
+                <b>{docDetail.qr ? 'Ha' : 'Yo‘q'}</b>
+              </div>
+              <div>
+                <div className="muted">Imzo</div>
+                <b>{docDetail.signature ? 'Ha' : 'Yo‘q'}</b>
+              </div>
+            </div>
+
+            <div className="muted" style={{ fontSize: 12 }}>
+              Yaratilgan:{' '}
+              {new Date(docDetail.createdAt).toLocaleString('uz-UZ')}
+            </div>
           </div>
         </Modal>
       )}
@@ -1317,7 +1495,10 @@ export default function Documents() {
                   gap: 8,
                 }}
               >
-                <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <CheckCircle2
+                  size={16}
+                  style={{ flexShrink: 0, marginTop: 1 }}
+                />
                 <div>Tasdiqlansa, yuboruvchi xabar oladi.</div>
               </div>
             )}
