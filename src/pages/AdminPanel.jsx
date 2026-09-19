@@ -1,13 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
-import { Card, Badge, Button, Segmented, Modal, Input, Select } from '../components/UI.jsx';
+import {
+  Card,
+  Badge,
+  Button,
+  Segmented,
+  Modal,
+  Input,
+  Select,
+} from '../components/UI.jsx';
+import ClockWidget from '../components/ClockWidget.jsx';
 import { DEMO_USERS, REGIONS, WASTE_CLASSES } from '../data/mockData.js';
 import Icon from '../components/Icons.jsx';
 import PermissionGate from '../components/PermissionGate.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirm } from '../context/ConfirmContext.jsx';
-import { can, canAny } from '../utils/permissions.js';
-import { Plus, Pencil, Trash2, Shield, Users, MapPin, Lock } from 'lucide-react';
+import { can } from '../utils/permissions.js';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Shield,
+  Users,
+  MapPin,
+  Lock,
+  Recycle,
+  Activity,
+} from 'lucide-react';
 
 const ROLE_OPTIONS = [
   { value: 'company', label: 'Korxona' },
@@ -24,8 +43,14 @@ const ROLE_LABELS = {
 };
 
 const DEFAULT_WASTE_TYPES = [
-  'Ishlatilgan moy', 'Batareya', 'Kimyoviy chiqindi', 'Lyuminestsent lampa',
-  'Tibbiy chiqindi', 'Elektr jihozlar', 'Bo‘yoq qoldiqlari', 'Pestitsidlar',
+  'Ishlatilgan moy',
+  'Batareya',
+  'Kimyoviy chiqindi',
+  'Lyuminestsent lampa',
+  'Tibbiy chiqindi',
+  'Elektr jihozlar',
+  'Bo‘yoq qoldiqlari',
+  'Pestitsidlar',
 ];
 
 const emptyUser = {
@@ -37,11 +62,81 @@ const emptyUser = {
   status: 'active',
 };
 
+// ═══════════════════════════════════════════════════════════
+// STAT CARD
+// ═══════════════════════════════════════════════════════════
+function StatCard({ label, value, subtext, IconCmp, accent, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: '#fff',
+        borderRadius: 16,
+        padding: 18,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform 0.2s',
+        minHeight: 130,
+      }}
+      onMouseEnter={(e) => {
+        if (onClick) e.currentTarget.style.transform = 'translateY(-3px)';
+      }}
+      onMouseLeave={(e) => {
+        if (onClick) e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      <div
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 11,
+          background: accent,
+          color: '#fff',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: `0 4px 12px ${accent}40`,
+        }}
+      >
+        <IconCmp size={20} strokeWidth={2.2} />
+      </div>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: '#8E8E93',
+          letterSpacing: '0.2px',
+          marginTop: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 30,
+          fontWeight: 700,
+          lineHeight: 1,
+          color: '#1A1A1A',
+        }}
+      >
+        {value}
+      </div>
+      {subtext && (
+        <div style={{ fontSize: 11.5, color: '#8E8E93' }}>{subtext}</div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// ASOSIY KOMPONENT
+// ═══════════════════════════════════════════════════════════
 export default function AdminPanel() {
   const { user } = useAuth();
   const confirm = useConfirm();
 
-  // ===== RBAC: ruxsatlar =====
   const canCreateUser = can(user, 'user.create');
   const canEditUser = can(user, 'user.edit');
   const canDeleteUser = can(user, 'user.delete');
@@ -62,6 +157,7 @@ export default function AdminPanel() {
   const [typeForm, setTypeForm] = useState({ name: '' });
   const [confirmDeleteType, setConfirmDeleteType] = useState(null);
 
+  // Yuklash
   useEffect(() => {
     const savedUsers = JSON.parse(localStorage.getItem('crm_users') || 'null');
     if (savedUsers && Array.isArray(savedUsers) && savedUsers.length) {
@@ -72,7 +168,9 @@ export default function AdminPanel() {
       localStorage.setItem('crm_users', JSON.stringify(init));
     }
 
-    const savedTypes = JSON.parse(localStorage.getItem('crm_waste_types') || 'null');
+    const savedTypes = JSON.parse(
+      localStorage.getItem('crm_waste_types') || 'null'
+    );
     if (savedTypes && Array.isArray(savedTypes) && savedTypes.length) {
       setWasteTypes(savedTypes);
     } else {
@@ -96,7 +194,7 @@ export default function AdminPanel() {
     localStorage.setItem('crm_waste_types', JSON.stringify(next));
   };
 
-  // ===== USER CRUD =====
+  // USER CRUD
   const openAddUser = () => {
     if (!canCreateUser) return;
     setEditingUserId(null);
@@ -129,7 +227,11 @@ export default function AdminPanel() {
     if (editingUserId) {
       const next = users.map((u) =>
         u.id === editingUserId
-          ? { ...u, ...userForm, roleLabel: ROLE_LABELS[userForm.role] || u.roleLabel }
+          ? {
+              ...u,
+              ...userForm,
+              roleLabel: ROLE_LABELS[userForm.role] || u.roleLabel,
+            }
           : u
       );
       persistUsers(next);
@@ -155,7 +257,7 @@ export default function AdminPanel() {
     setConfirmDeleteUser(null);
   };
 
-  // ===== WASTE TYPE CRUD =====
+  // WASTE TYPE CRUD
   const openAddType = () => {
     if (!canConfigure) return;
     setEditingTypeId(null);
@@ -178,18 +280,26 @@ export default function AdminPanel() {
       return;
     }
     const dup = wasteTypes.find(
-      (t) => t.name.toLowerCase() === name.toLowerCase() && t.id !== editingTypeId
+      (t) =>
+        t.name.toLowerCase() === name.toLowerCase() &&
+        t.id !== editingTypeId
     );
     if (dup) {
       alert('Bu nom allaqachon mavjud');
       return;
     }
     if (editingTypeId) {
-      persistTypes(wasteTypes.map((t) => (t.id === editingTypeId ? { ...t, name } : t)));
+      persistTypes(
+        wasteTypes.map((t) => (t.id === editingTypeId ? { ...t, name } : t))
+      );
     } else {
       persistTypes([
         ...wasteTypes,
-        { id: 'wt' + Date.now(), name, createdAt: new Date().toISOString().slice(0, 10) },
+        {
+          id: 'wt' + Date.now(),
+          name,
+          createdAt: new Date().toISOString().slice(0, 10),
+        },
       ]);
     }
     setShowTypeForm(false);
@@ -203,7 +313,7 @@ export default function AdminPanel() {
     setConfirmDeleteType(null);
   };
 
-  // ===== Statistika =====
+  // STATISTIKA
   const regionStats = useMemo(() => {
     return REGIONS.map((r) => {
       const inRegion = users.filter((u) => u.region === r);
@@ -242,7 +352,6 @@ export default function AdminPanel() {
     return null;
   };
 
-  // Ruxsat yo'q bo'lsa — Admin panelni ko'rsatmaymiz
   if (!canConfigure && !can(user, 'user.view') && !canViewAudit) {
     return (
       <Layout title="Ruxsat yo‘q" subtitle="Sizda bu bo‘limga kirish huquqi yo‘q">
@@ -263,11 +372,117 @@ export default function AdminPanel() {
       subtitle="Tizim boshqaruvi"
       actions={headerAction()}
     >
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* HERO CARD — yangilangan (ClockWidget bilan) */}
+      {/* ═══════════════════════════════════════════════════ */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #E8F1FF 0%, #F5F0FF 100%)',
+          borderRadius: 20,
+          padding: 24,
+          marginBottom: 18,
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 20,
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              margin: '0 0 8px',
+              color: '#1A1A1A',
+            }}
+          >
+            Salom, {user.name}! 👋
+          </h2>
+          <p
+            style={{
+              fontSize: 14,
+              color: '#5A6170',
+              margin: '0 0 14px',
+              lineHeight: 1.5,
+              maxWidth: 480,
+            }}
+          >
+            Tizim administratori paneli · Foydalanuvchilar, hududlar va
+            sozlamalarni boshqaring.
+          </p>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 12px',
+              background: 'rgba(255,255,255,0.75)',
+              borderRadius: 10,
+              fontSize: 12.5,
+              color: '#3C3C43',
+              fontWeight: 500,
+            }}
+          >
+            <Shield size={14} />
+            Tizim administratori
+          </div>
+        </div>
+
+        <ClockWidget />
+      </div>
+
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* STAT CARDS */}
+      {/* ═══════════════════════════════════════════════════ */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 14,
+          marginBottom: 18,
+        }}
+      >
+        <StatCard
+          label="FOYDALANUVCHILAR"
+          value={totalUsers}
+          subtext="Jami ro‘yxatdan o‘tgan"
+          IconCmp={Users}
+          accent="#007AFF"
+          onClick={() => setTab('users')}
+        />
+        <StatCard
+          label="FAOL"
+          value={totalActive}
+          subtext="Hozir aktiv"
+          IconCmp={Activity}
+          accent="#34C759"
+        />
+        <StatCard
+          label="HUDUDLAR"
+          value={REGIONS.length}
+          subtext="Respublika bo‘yicha"
+          IconCmp={MapPin}
+          accent="#AF52DE"
+          onClick={() => setTab('regions')}
+        />
+        <StatCard
+          label="CHIQINDI TURLARI"
+          value={wasteTypes.length}
+          subtext="Katalogdagi turlar"
+          IconCmp={Recycle}
+          accent="#FF9500"
+          onClick={() => setTab('wasteTypes')}
+        />
+      </div>
+
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* TABLAR */}
+      {/* ═══════════════════════════════════════════════════ */}
       <div className="mb-4" style={{ overflowX: 'auto' }}>
         <Segmented value={tab} onChange={setTab} options={tabs} />
       </div>
 
-      {/* ================= USERS ================= */}
+      {/* USERS TAB */}
       {tab === 'users' && (
         <div className="table-wrap">
           <table>
@@ -286,15 +501,24 @@ export default function AdminPanel() {
                 <tr key={u.id}>
                   <td>
                     <div className="row">
-                      <div className="user-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
-                        {u.name.split(' ').map((s) => s[0]).slice(0, 2).join('')}
+                      <div
+                        className="user-avatar"
+                        style={{ width: 32, height: 32, fontSize: 12 }}
+                      >
+                        {u.name
+                          .split(' ')
+                          .map((s) => s[0])
+                          .slice(0, 2)
+                          .join('')}
                       </div>
                       <b>{u.name}</b>
                     </div>
                   </td>
                   <td className="mono">{u.login}</td>
                   <td>
-                    <Badge color="blue">{u.roleLabel || ROLE_LABELS[u.role]}</Badge>
+                    <Badge color="blue">
+                      {u.roleLabel || ROLE_LABELS[u.role]}
+                    </Badge>
                   </td>
                   <td>{u.region}</td>
                   <td>
@@ -303,7 +527,10 @@ export default function AdminPanel() {
                     </Badge>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <div className="row" style={{ justifyContent: 'flex-end', gap: 4 }}>
+                    <div
+                      className="row"
+                      style={{ justifyContent: 'flex-end', gap: 4 }}
+                    >
                       {canEditUser && (
                         <button
                           className="icon-btn"
@@ -331,7 +558,7 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ================= REGIONS ================= */}
+      {/* REGIONS TAB */}
       {tab === 'regions' && (
         <>
           <div className="grid grid-3 mb-4">
@@ -346,7 +573,7 @@ export default function AdminPanel() {
               <div className="stat-icon" style={{ background: '#34C759' }}>
                 <Users size={20} />
               </div>
-              <div className="stat-label">Faol foydalanuvchilar</div>
+              <div className="stat-label">Faol</div>
               <div className="stat-value mono">{totalActive}</div>
             </div>
             <div className="stat" style={{ '--accent': '#AF52DE' }}>
@@ -361,7 +588,7 @@ export default function AdminPanel() {
           <Card>
             <div className="between mb-3">
               <div className="card-title" style={{ margin: 0 }}>
-                Hududlar bo‘yicha faol foydalanuvchilar
+                Hududlar bo‘yicha foydalanuvchilar
               </div>
               <Badge color="green">Faol</Badge>
             </div>
@@ -379,7 +606,10 @@ export default function AdminPanel() {
                 <tbody>
                   {regionStats.map((r, i) => (
                     <tr key={r.name}>
-                      <td className="mono" style={{ color: 'var(--ios-gray)' }}>
+                      <td
+                        className="mono"
+                        style={{ color: 'var(--ios-gray)' }}
+                      >
                         {i + 1}
                       </td>
                       <td>
@@ -399,10 +629,14 @@ export default function AdminPanel() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <Badge color={r.active > 0 ? 'green' : 'gray'}>{r.active}</Badge>
+                        <Badge color={r.active > 0 ? 'green' : 'gray'}>
+                          {r.active}
+                        </Badge>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <Badge color={r.inactive > 0 ? 'red' : 'gray'}>{r.inactive}</Badge>
+                        <Badge color={r.inactive > 0 ? 'red' : 'gray'}>
+                          {r.inactive}
+                        </Badge>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <b className="mono">{r.total}</b>
@@ -416,7 +650,7 @@ export default function AdminPanel() {
         </>
       )}
 
-      {/* ================= WASTE TYPES ================= */}
+      {/* WASTE TYPES TAB */}
       {tab === 'wasteTypes' && (
         <Card>
           <div className="between mb-3">
@@ -429,7 +663,7 @@ export default function AdminPanel() {
           {wasteTypes.length === 0 ? (
             <div className="empty">
               <div className="empty-icon">
-                <Icon name="recycle" size={48} strokeWidth={1.5} />
+                <Recycle size={48} strokeWidth={1.5} />
               </div>
               <b>Chiqindi turlari yo‘q</b>
               <div>“Chiqindi turi” tugmasi orqali qo‘shing</div>
@@ -437,7 +671,11 @@ export default function AdminPanel() {
           ) : (
             <div className="list" style={{ boxShadow: 'none' }}>
               {wasteTypes.map((t, i) => (
-                <div key={t.id} className="list-item" style={{ cursor: 'default' }}>
+                <div
+                  key={t.id}
+                  className="list-item"
+                  style={{ cursor: 'default' }}
+                >
                   <div
                     className="list-icon"
                     style={{
@@ -478,7 +716,7 @@ export default function AdminPanel() {
         </Card>
       )}
 
-      {/* ================= WASTE CLASSES ================= */}
+      {/* WASTE CLASSES TAB */}
       {tab === 'wasteClasses' && (
         <Card>
           <div className="card-title">Xavflilik sinflari</div>
@@ -489,7 +727,15 @@ export default function AdminPanel() {
               style={{ borderBottom: '1px solid var(--ios-sep)' }}
             >
               <Badge
-                color={{ I: 'red', II: 'orange', III: 'yellow', IV: 'blue', V: 'green' }[c]}
+                color={
+                  {
+                    I: 'red',
+                    II: 'orange',
+                    III: 'yellow',
+                    IV: 'blue',
+                    V: 'green',
+                  }[c]
+                }
               >
                 Sinf {c}
               </Badge>
@@ -501,7 +747,7 @@ export default function AdminPanel() {
         </Card>
       )}
 
-      {/* ================= AUDIT ================= */}
+      {/* AUDIT TAB */}
       {tab === 'audit' && (
         <PermissionGate
           action="system.audit"
@@ -517,12 +763,32 @@ export default function AdminPanel() {
         >
           <div className="list">
             {[
-              { who: 'Aziz Karimov', what: 'Q3 hisobotini taqdim etdi', when: '2026-10-05 14:22' },
-              { who: 'Dilshod Rahimov', what: 'Q3 hisobotini ko‘rib chiqdi', when: '2026-10-05 15:10' },
-              { who: 'O. Hazratqulov', what: 'Yillik hisobotni tasdiqladi', when: '2026-10-06 09:14' },
-              { who: 'Sardor Adminov', what: 'Yangi foydalanuvchi qo‘shdi', when: '2026-10-06 10:00' },
+              {
+                who: 'Aziz Karimov',
+                what: 'Q3 hisobotini taqdim etdi',
+                when: '2026-10-05 14:22',
+              },
+              {
+                who: 'Dilshod Rahimov',
+                what: 'Q3 hisobotini ko‘rib chiqdi',
+                when: '2026-10-05 15:10',
+              },
+              {
+                who: 'O. Hazratqulov',
+                what: 'Yillik hisobotni tasdiqladi',
+                when: '2026-10-06 09:14',
+              },
+              {
+                who: 'Sardor Adminov',
+                what: 'Yangi foydalanuvchi qo‘shdi',
+                when: '2026-10-06 10:00',
+              },
             ].map((a, i) => (
-              <div key={i} className="list-item" style={{ cursor: 'default' }}>
+              <div
+                key={i}
+                className="list-item"
+                style={{ cursor: 'default' }}
+              >
                 <div className="list-icon">
                   <Icon name="activity" size={20} />
                 </div>
@@ -539,10 +805,12 @@ export default function AdminPanel() {
         </PermissionGate>
       )}
 
-      {/* ================= MODAL: USER ================= */}
+      {/* MODAL: USER */}
       {showUserForm && (canCreateUser || canEditUser) && (
         <Modal
-          title={editingUserId ? 'Foydalanuvchini tahrirlash' : 'Yangi foydalanuvchi'}
+          title={
+            editingUserId ? 'Foydalanuvchini tahrirlash' : 'Yangi foydalanuvchi'
+          }
           subtitle={
             editingUserId
               ? 'Ma’lumotlarni o‘zgartiring'
@@ -574,23 +842,31 @@ export default function AdminPanel() {
               <Input
                 label="F.I.Sh. *"
                 value={userForm.name}
-                onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                onChange={(e) =>
+                  setUserForm({ ...userForm, name: e.target.value })
+                }
               />
             </div>
             <Input
               label="Login *"
               value={userForm.login}
-              onChange={(e) => setUserForm({ ...userForm, login: e.target.value })}
+              onChange={(e) =>
+                setUserForm({ ...userForm, login: e.target.value })
+              }
             />
             <Input
               label="Parol"
               value={userForm.password}
-              onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+              onChange={(e) =>
+                setUserForm({ ...userForm, password: e.target.value })
+              }
             />
             <Select
               label="Rol"
               value={userForm.role}
-              onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+              onChange={(e) =>
+                setUserForm({ ...userForm, role: e.target.value })
+              }
             >
               {ROLE_OPTIONS.map((r) => (
                 <option key={r.value} value={r.value}>
@@ -601,7 +877,9 @@ export default function AdminPanel() {
             <Select
               label="Hudud"
               value={userForm.region}
-              onChange={(e) => setUserForm({ ...userForm, region: e.target.value })}
+              onChange={(e) =>
+                setUserForm({ ...userForm, region: e.target.value })
+              }
             >
               {REGIONS.map((r) => (
                 <option key={r}>{r}</option>
@@ -611,7 +889,9 @@ export default function AdminPanel() {
               <Select
                 label="Holat"
                 value={userForm.status}
-                onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}
+                onChange={(e) =>
+                  setUserForm({ ...userForm, status: e.target.value })
+                }
               >
                 <option value="active">Faol</option>
                 <option value="inactive">Nofaol</option>
@@ -631,13 +911,13 @@ export default function AdminPanel() {
               alignItems: 'center',
             }}
           >
-            <Shield size={14} /> Parolni o‘zgartirsangiz, foydalanuvchi yangi parol
-            bilan kiradi.
+            <Shield size={14} /> Parolni o‘zgartirsangiz, foydalanuvchi yangi
+            parol bilan kiradi.
           </div>
         </Modal>
       )}
 
-      {/* ================= MODAL: DELETE USER ================= */}
+      {/* MODAL: DELETE USER */}
       {confirmDeleteUser && canDeleteUser && (
         <Modal
           title="Foydalanuvchini o‘chirish"
@@ -645,7 +925,10 @@ export default function AdminPanel() {
           onClose={() => setConfirmDeleteUser(null)}
           actions={
             <>
-              <Button variant="secondary" onClick={() => setConfirmDeleteUser(null)}>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmDeleteUser(null)}
+              >
                 Bekor
               </Button>
               <Button variant="danger" onClick={doDeleteUser}>
@@ -655,15 +938,20 @@ export default function AdminPanel() {
           }
         >
           <div style={{ fontSize: 14, color: 'var(--ios-text2)' }}>
-            Bu amalni ortga qaytarib bo‘lmaydi.
+            Bu amalni ortga qaytarib bo‘lmaydi. Foydalanuvchi tizimga kira
+            olmaydi.
           </div>
         </Modal>
       )}
 
-      {/* ================= MODAL: WASTE TYPE ================= */}
+      {/* MODAL: WASTE TYPE */}
       {showTypeForm && canConfigure && (
         <Modal
-          title={editingTypeId ? 'Chiqindi turini tahrirlash' : 'Yangi chiqindi turi'}
+          title={
+            editingTypeId
+              ? 'Chiqindi turini tahrirlash'
+              : 'Yangi chiqindi turi'
+          }
           subtitle={
             editingTypeId ? 'Nomni o‘zgartiring' : 'Yangi tur nomini kiriting'
           }
@@ -698,7 +986,7 @@ export default function AdminPanel() {
         </Modal>
       )}
 
-      {/* ================= MODAL: DELETE WASTE TYPE ================= */}
+      {/* MODAL: DELETE WASTE TYPE */}
       {confirmDeleteType && canConfigure && (
         <Modal
           title="Chiqindi turini o‘chirish"
@@ -706,7 +994,10 @@ export default function AdminPanel() {
           onClose={() => setConfirmDeleteType(null)}
           actions={
             <>
-              <Button variant="secondary" onClick={() => setConfirmDeleteType(null)}>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmDeleteType(null)}
+              >
                 Bekor
               </Button>
               <Button variant="danger" onClick={doDeleteType}>
