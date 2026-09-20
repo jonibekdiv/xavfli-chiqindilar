@@ -5,6 +5,7 @@ import { Button, Badge, Modal } from '../components/UI.jsx';
 import FileViewer from '../components/FileViewer.jsx';
 import Dropdown from '../components/Dropdown.jsx';
 import Icon from '../components/Icons.jsx';
+import { TableSkeleton } from '../components/Skeleton.jsx';
 import {
   ApproveButton,
   ReturnButton,
@@ -15,14 +16,14 @@ import {
   Upload, Eye, Send, RotateCcw, CheckCircle2, AlertTriangle,
   FileText, Building2, Plus, Inbox, FileSignature,
   XCircle, ShieldCheck, User as UserIcon, MessageSquare, Paperclip,
-  Trash2, Pencil,
+  Trash2, Search,
 } from 'lucide-react';
 import {
   saveFile, listFiles, deleteFile, updateFileMeta, appendHistory,
   listIncomingFiles, getFile,
 } from '../utils/fileStore.js';
 import {
-  listMyDocs, listIncomingDocs, deleteDoc, getDoc,
+  listMyDocs, listIncomingDocs, deleteDoc, getDoc, updateDoc,
   markDocRead, approveDoc, returnDoc, rejectDoc,
 } from '../utils/docStore.js';
 import { pushNotification } from '../utils/notify.js';
@@ -30,14 +31,9 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirm } from '../context/ConfirmContext.jsx';
 import { FILE_STATUS } from '../data/mockData.js';
 import { recipientLabel, findRecipient } from '../data/orgUnits.js';
-import { canAny, can } from '../utils/permissions.js';
-
-function formatSize(bytes) {
-  if (!bytes) return '—';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-}
+import { canAny } from '../utils/permissions.js';
+import { formatSize, timeAgo } from '../utils/format.js';
+import { useDebounce } from '../hooks/useDebounce.js';
 
 function extBadge(name) {
   const ext = name.split('.').pop().toLowerCase();
@@ -49,16 +45,6 @@ function extBadge(name) {
     return { label: 'IMG', color: '#AF52DE' };
   if (['txt', 'md', 'log'].includes(ext)) return { label: 'TXT', color: '#8E8E93' };
   return { label: 'FILE', color: '#8E8E93' };
-}
-
-function timeAgo(iso) {
-  if (!iso) return '';
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return 'hozir';
-  if (diff < 3600) return Math.floor(diff / 60) + ' daq oldin';
-  if (diff < 86400) return Math.floor(diff / 3600) + ' soat oldin';
-  if (diff < 604800) return Math.floor(diff / 86400) + ' kun oldin';
-  return new Date(iso).toLocaleDateString('uz-UZ');
 }
 
 const DOC_STATUS = {
@@ -98,12 +84,12 @@ export default function Documents() {
   const [actionReason, setActionReason] = useState('');
   const [filter, setFilter] = useState('all');
 
-  // Biriktirilgan faylni ochish
   const [openAttached, setOpenAttached] = useState(null);
-
-  // Qoralamani o'chirish / yuborish uchun
   const [confirmDeleteDraft, setConfirmDeleteDraft] = useState(null);
   const [confirmSendDraft, setConfirmSendDraft] = useState(null);
+
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
 
   const fileInputRef = useRef(null);
 
@@ -136,40 +122,44 @@ export default function Documents() {
 
   const load = async () => {
     setLoading(true);
-    const all = await listFiles();
+    try {
+      const all = await listFiles();
 
-    setMyFiles(
-      all
-        .filter((f) => f.uploaderId === user.id || f.ownerId === user.id)
-        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-    );
-
-    if (isRecipientRole) {
-      const incoming = await listIncomingFiles(user);
-      setIncomingFiles(
-        incoming.sort((a, b) =>
-          (b.submittedAt || b.date || '').localeCompare(
-            a.submittedAt || a.date || ''
-          )
-        )
+      setMyFiles(
+        all
+          .filter((f) => f.uploaderId === user.id || f.ownerId === user.id)
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       );
-      setIncomingDocs(
-        listIncomingDocs(user).sort((a, b) =>
+
+      if (isRecipientRole) {
+        const incoming = await listIncomingFiles(user);
+        setIncomingFiles(
+          incoming.sort((a, b) =>
+            (b.submittedAt || b.date || '').localeCompare(
+              a.submittedAt || a.date || ''
+            )
+          )
+        );
+        setIncomingDocs(
+          listIncomingDocs(user).sort((a, b) =>
+            (b.createdAt || '').localeCompare(a.createdAt || '')
+          )
+        );
+      } else {
+        setIncomingFiles([]);
+        setIncomingDocs([]);
+      }
+
+      setMyDocs(
+        listMyDocs(user).sort((a, b) =>
           (b.createdAt || '').localeCompare(a.createdAt || '')
         )
       );
-    } else {
-      setIncomingFiles([]);
-      setIncomingDocs([]);
+    } catch (err) {
+      console.error('Yuklashda xato:', err);
+    } finally {
+      setLoading(false);
     }
-
-    setMyDocs(
-      listMyDocs(user).sort((a, b) =>
-        (b.createdAt || '').localeCompare(a.createdAt || '')
-      )
-    );
-
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -189,16 +179,26 @@ export default function Documents() {
       });
       return;
     }
-    const stored = await getFile(fileMeta.id);
-    if (stored) {
-      setOpenAttached(stored);
-    } else {
+    try {
+      const stored = await getFile(fileMeta.id);
+      if (stored) {
+        setOpenAttached(stored);
+      } else {
+        await confirm({
+          title: 'Fayl topilmadi',
+          text: 'Fayl IndexedDB’dan topilmadi. Ehtimol o‘chirilgan.',
+          confirmText: 'Tushunarli',
+          hideCancel: true,
+          variant: 'warning',
+        });
+      }
+    } catch (err) {
       await confirm({
-        title: 'Fayl topilmadi',
-        text: 'Fayl IndexedDB’dan topilmadi. Ehtimol o‘chirilgan.',
+        title: 'Xatolik',
+        text: err.message || 'Faylni ochib bo‘lmadi',
         confirmText: 'Tushunarli',
         hideCancel: true,
-        variant: 'warning',
+        variant: 'error',
       });
     }
   };
@@ -207,10 +207,11 @@ export default function Documents() {
   const sendDraft = async (doc) => {
     if (!doc) return;
     const current = getDoc(doc.id) || doc;
+
     if (!current.recipients || current.recipients.length === 0) {
       await confirm({
         title: 'Qabul qiluvchilar yo‘q',
-        text: 'Qoralamada qabul qiluvchilar tanlanmagan. Avval tahrirlab, qabul qiluvchilarni tanlang.',
+        text: 'Qoralamada qabul qiluvchilar tanlanmagan.',
         confirmText: 'Tushunarli',
         hideCancel: true,
         variant: 'warning',
@@ -227,96 +228,124 @@ export default function Documents() {
     });
     if (!ok) return;
 
-    const now = new Date().toISOString();
-    // Hujjat statusini yangilash
-    const updated = { ...current, status: 'sent', sentAt: now };
-    // docStore.updateDoc ishlatamiz
-    const { updateDoc } = await import('../utils/docStore.js');
-    updateDoc(current.id, { status: 'sent', sentAt: now });
+    try {
+      const now = new Date().toISOString();
+      updateDoc(current.id, { status: 'sent', sentAt: now });
 
-    // Biriktirilgan fayllarni ham 'submitted' qilib belgilash
-    for (const f of current.files || []) {
-      if (f.id) {
-        await updateFileMeta(f.id, {
-          status: 'submitted',
-          submittedAt: now,
-        });
+      for (const f of current.files || []) {
+        if (f.id) {
+          await updateFileMeta(f.id, {
+            status: 'submitted',
+            submittedAt: now,
+          });
+        }
       }
-    }
 
-    // Qabul qiluvchilarga bildirishnoma
-    for (const rid of current.recipients) {
-      const recipient = findRecipient(rid);
-      if (recipient?.type === 'staff') {
-        pushNotification({
-          toUserId: 'u2',
-          fromUserId: user.id,
-          fromName: user.name,
-          type: 'submitted',
-          title: 'Yangi hujjat keldi',
-          text: `${user.organization || user.name} sizga "${current.number}" hujjatini yubordi.`,
-        });
-      }
-    }
+      pushNotification({
+        toUserId: 'u2',
+        fromUserId: user.id,
+        fromName: user.name,
+        type: 'submitted',
+        title: 'Yangi hujjat keldi',
+        text: `${user.organization || user.name} "${current.number}" hujjatini yubordi.`,
+      });
 
-    setConfirmSendDraft(null);
-    setDocDetail(null);
-    load();
+      setConfirmSendDraft(null);
+      setDocDetail(null);
+      load();
+    } catch (err) {
+      console.error('Yuborishda xato:', err);
+      await confirm({
+        title: 'Xatolik',
+        text: err.message || 'Hujjatni yuborib bo‘lmadi',
+        confirmText: 'Tushunarli',
+        hideCancel: true,
+        variant: 'error',
+      });
+    }
   };
 
-  // ===== Qoralamani o'chirish =====
+  // ===== Qoralamani o‘chirish =====
   const deleteDraft = async (doc) => {
     if (!doc) return;
     const ok = await confirm({
       title: 'Qoralamani o‘chirish',
-      text: `"${doc.number}" raqamli qoralama butunlay o‘chirilsinmi? Bu amalni ortga qaytarib bo‘lmaydi.`,
+      text: `"${doc.number}" qoralamasi butunlay o‘chirilsinmi?`,
       confirmText: 'O‘chirish',
       cancelText: 'Bekor',
       variant: 'danger',
     });
     if (!ok) return;
 
-    // Biriktirilgan fayllarni ham o'chirish
-    for (const f of doc.files || []) {
-      if (f.id) {
-        await deleteFile(f.id);
+    try {
+      for (const f of doc.files || []) {
+        if (f.id) await deleteFile(f.id);
       }
+      deleteDoc(doc.id);
+      setConfirmDeleteDraft(null);
+      setDocDetail(null);
+      load();
+    } catch (err) {
+      console.error('O‘chirishda xato:', err);
     }
-    deleteDoc(doc.id);
-    setConfirmDeleteDraft(null);
-    setDocDetail(null);
-    load();
   };
 
-  // ===== Fayl yuklash =====
+  // ===== Fayl yuklash (xato boshqaruvi bilan) =====
   const handleUpload = async (e) => {
     if (!canUploadFile) return;
     const files = Array.from(e.target.files || []);
+    const results = { success: 0, failed: 0, errors: [] };
+
     for (const f of files) {
-      const id = 'f' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-      const now = new Date().toISOString();
-      await saveFile({
-        id,
-        name: f.name,
-        type: f.type || 'application/octet-stream',
-        size: f.size,
-        sizeText: formatSize(f.size),
-        date: now.slice(0, 10),
-        blob: f,
-        uploaderId: user.id,
-        uploaderName: user.name,
-        company: user.organization || user.name,
-        region: user.region,
-        status: 'draft',
-        submittedAt: null,
-        reviewedAt: null,
-        reviewedBy: null,
-        reviewedByName: null,
-        returnReason: null,
-        history: [{ action: 'created', by: user.id, byName: user.name, at: now }],
+      try {
+        if (f.size > 50 * 1024 * 1024) {
+          throw new Error('Fayl 50MB dan katta');
+        }
+        const id =
+          'f' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        const now = new Date().toISOString();
+        await saveFile({
+          id,
+          name: f.name,
+          type: f.type || 'application/octet-stream',
+          size: f.size,
+          sizeText: formatSize(f.size),
+          date: now.slice(0, 10),
+          blob: f,
+          uploaderId: user.id,
+          uploaderName: user.name,
+          company: user.organization || user.name,
+          region: user.region,
+          status: 'draft',
+          submittedAt: null,
+          reviewedAt: null,
+          reviewedBy: null,
+          reviewedByName: null,
+          returnReason: null,
+          history: [
+            { action: 'created', by: user.id, byName: user.name, at: now },
+          ],
+        });
+        results.success++;
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ file: f.name, error: err.message });
+        console.error(`Xato [${f.name}]:`, err);
+      }
+    }
+
+    e.target.value = '';
+
+    if (results.errors.length > 0) {
+      await confirm({
+        title: 'Ba\'zi fayllar yuklanmadi',
+        text: results.errors.map((e) => `• ${e.file}: ${e.error}`).join('\n'),
+        confirmText: 'Tushunarli',
+        hideCancel: true,
+        variant: 'warning',
       });
     }
-    e.target.value = '';
+
     load();
   };
 
@@ -324,35 +353,39 @@ export default function Documents() {
   const submitFileForReview = async (doc) => {
     const ok = await confirm({
       title: 'Tasdiqlashga yuborish',
-      text: `"${doc.name}" faylini mintaqaviy boshqarmaga tasdiqlashga yubormoqchimisiz?`,
+      text: `"${doc.name}" faylini mintaqaviy boshqarmaga yubormoqchimisiz?`,
       confirmText: 'Yuborish',
       cancelText: 'Bekor',
       variant: 'info',
     });
     if (!ok) return;
 
-    const now = new Date().toISOString();
-    await updateFileMeta(doc.id, {
-      status: 'submitted',
-      submittedAt: now,
-      returnReason: null,
-    });
-    await appendHistory(doc.id, {
-      action: 'submitted',
-      by: user.id,
-      byName: user.name,
-      at: now,
-    });
-    pushNotification({
-      toUserId: 'u2',
-      fromUserId: user.id,
-      fromName: user.name,
-      type: 'submitted',
-      title: 'Yangi fayl tasdiqlashga yuborildi',
-      text: `${user.organization || user.name} "${doc.name}" faylini tasdiqlashga yubordi.`,
-      relatedFileId: doc.id,
-    });
-    load();
+    try {
+      const now = new Date().toISOString();
+      await updateFileMeta(doc.id, {
+        status: 'submitted',
+        submittedAt: now,
+        returnReason: null,
+      });
+      await appendHistory(doc.id, {
+        action: 'submitted',
+        by: user.id,
+        byName: user.name,
+        at: now,
+      });
+      pushNotification({
+        toUserId: 'u2',
+        fromUserId: user.id,
+        fromName: user.name,
+        type: 'submitted',
+        title: 'Yangi fayl tasdiqlashga yuborildi',
+        text: `${user.organization || user.name} "${doc.name}" faylini yubordi.`,
+        relatedFileId: doc.id,
+      });
+      load();
+    } catch (err) {
+      console.error('Yuborishda xato:', err);
+    }
   };
 
   // ===== Kelgan fayl ustida harakat =====
@@ -424,7 +457,7 @@ export default function Documents() {
     }
   };
 
-  // ===== Faylni o'chirish =====
+  // ===== Faylni o‘chirish =====
   const doDelete = async () => {
     if (!confirmDelete || !canDeleteFile) return;
     const reason = deleteReason.trim();
@@ -498,7 +531,7 @@ export default function Documents() {
       },
       reject: {
         title: 'Hujjatni bekor qilish',
-        text: `"${actionDoc.number}" hujjatini butunlay bekor qilasizmi? Bu amalni ortga qaytarib bo‘lmaydi.`,
+        text: `"${actionDoc.number}" hujjatini bekor qilasizmi?`,
         confirmText: 'Bekor qilish',
         variant: 'danger',
       },
@@ -515,7 +548,7 @@ export default function Documents() {
         fromName: user.name,
         type: 'approved',
         title: 'Hujjatingiz tasdiqlandi ✅',
-        text: `"${actionDoc.number}" tasdiqlandi.${reason ? ' Izoh: ' + reason : ''}`,
+        text: `"${actionDoc.number}" tasdiqlandi.`,
       });
     } else if (actionType === 'return') {
       returnDoc(actionDoc.id, user, reason);
@@ -545,42 +578,75 @@ export default function Documents() {
     load();
   };
 
-  // ===== FILTRLASH =====
+  // ===== FILTRLASH (debounce bilan) =====
   const filteredMyFiles = useMemo(() => {
-    if (filter === 'all') return myFiles;
-    if (filter === 'draft') return myFiles.filter((d) => d.status === 'draft');
-    if (filter === 'sent') return myFiles.filter((d) => d.status === 'submitted');
-    if (filter === 'approved') return myFiles.filter((d) => d.status === 'approved');
-    if (filter === 'returned') return myFiles.filter((d) => d.status === 'returned');
-    return [];
-  }, [myFiles, filter]);
+    let list = myFiles;
+    if (filter === 'draft') list = list.filter((d) => d.status === 'draft');
+    else if (filter === 'sent') list = list.filter((d) => d.status === 'submitted');
+    else if (filter === 'approved') list = list.filter((d) => d.status === 'approved');
+    else if (filter === 'returned') list = list.filter((d) => d.status === 'returned');
+
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
+      list = list.filter((f) => f.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [myFiles, filter, debouncedSearch]);
 
   const filteredIncomingFiles = useMemo(() => {
-    if (filter === 'all') return incomingFiles;
-    if (filter === 'sent') return incomingFiles.filter((d) => d.status === 'submitted');
-    if (filter === 'approved') return incomingFiles.filter((d) => d.status === 'approved');
-    if (filter === 'returned') return incomingFiles.filter((d) => d.status === 'returned');
-    return [];
-  }, [incomingFiles, filter]);
+    let list = incomingFiles;
+    if (filter === 'sent') list = list.filter((d) => d.status === 'submitted');
+    else if (filter === 'approved') list = list.filter((d) => d.status === 'approved');
+    else if (filter === 'returned') list = list.filter((d) => d.status === 'returned');
+
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.name.toLowerCase().includes(q) ||
+          (f.company || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [incomingFiles, filter, debouncedSearch]);
 
   const filteredMyDocs = useMemo(() => {
-    if (filter === 'all') return myDocs;
-    if (filter === 'draft') return myDocs.filter((d) => d.status === 'draft');
-    if (filter === 'sent') return myDocs.filter((d) => d.status === 'sent');
-    if (filter === 'approved') return myDocs.filter((d) => d.status === 'approved');
-    if (filter === 'returned') return myDocs.filter((d) => d.status === 'returned');
-    if (filter === 'rejected') return myDocs.filter((d) => d.status === 'rejected');
-    return [];
-  }, [myDocs, filter]);
+    let list = myDocs;
+    if (filter === 'draft') list = list.filter((d) => d.status === 'draft');
+    else if (filter === 'sent') list = list.filter((d) => d.status === 'sent');
+    else if (filter === 'approved') list = list.filter((d) => d.status === 'approved');
+    else if (filter === 'returned') list = list.filter((d) => d.status === 'returned');
+    else if (filter === 'rejected') list = list.filter((d) => d.status === 'rejected');
+
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
+      list = list.filter(
+        (d) =>
+          (d.number || '').toLowerCase().includes(q) ||
+          (d.summary || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [myDocs, filter, debouncedSearch]);
 
   const filteredIncomingDocs = useMemo(() => {
-    if (filter === 'all') return incomingDocs;
-    if (filter === 'sent') return incomingDocs.filter((d) => d.status === 'sent');
-    if (filter === 'approved') return incomingDocs.filter((d) => d.status === 'approved');
-    if (filter === 'returned') return incomingDocs.filter((d) => d.status === 'returned');
-    if (filter === 'rejected') return incomingDocs.filter((d) => d.status === 'rejected');
-    return [];
-  }, [incomingDocs, filter]);
+    let list = incomingDocs;
+    if (filter === 'sent') list = list.filter((d) => d.status === 'sent');
+    else if (filter === 'approved') list = list.filter((d) => d.status === 'approved');
+    else if (filter === 'returned') list = list.filter((d) => d.status === 'returned');
+    else if (filter === 'rejected') list = list.filter((d) => d.status === 'rejected');
+
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
+      list = list.filter(
+        (d) =>
+          (d.number || '').toLowerCase().includes(q) ||
+          (d.summary || '').toLowerCase().includes(q) ||
+          (d.createdByOrg || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [incomingDocs, filter, debouncedSearch]);
 
   const unreadIncomingDocs = incomingDocs.filter(
     (d) => !Array.isArray(d.readBy) || !d.readBy.some((r) => r.userId === user.id)
@@ -694,37 +760,73 @@ export default function Documents() {
         </div>
       )}
 
-      {/* Filtrlar */}
+      {/* Filtrlar + qidiruv */}
       <div
         className="mb-3"
-        style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}
+        style={{
+          display: 'flex',
+          gap: 10,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
       >
-        {[
-          { v: 'all', l: 'Barchasi' },
-          { v: 'draft', l: `Qoralama${draftCount ? ` (${draftCount})` : ''}` },
-          { v: 'sent', l: 'Yuborilgan' },
-          { v: 'approved', l: 'Tasdiqlangan' },
-          { v: 'returned', l: 'Qaytarilgan' },
-          { v: 'rejected', l: 'Bekor qilingan' },
-        ].map((f) => (
-          <button
-            key={f.v}
-            onClick={() => setFilter(f.v)}
-            className="btn btn-sm"
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[
+            { v: 'all', l: 'Barchasi' },
+            { v: 'draft', l: `Qoralama${draftCount ? ` (${draftCount})` : ''}` },
+            { v: 'sent', l: 'Yuborilgan' },
+            { v: 'approved', l: 'Tasdiqlangan' },
+            { v: 'returned', l: 'Qaytarilgan' },
+            { v: 'rejected', l: 'Bekor qilingan' },
+          ].map((f) => (
+            <button
+              key={f.v}
+              onClick={() => setFilter(f.v)}
+              className="btn btn-sm"
+              style={{
+                background:
+                  filter === f.v ? 'var(--ios-blue)' : 'var(--ios-gray6)',
+                color: filter === f.v ? '#fff' : 'var(--ios-text2)',
+              }}
+            >
+              {f.l}
+            </button>
+          ))}
+        </div>
+
+        <div
+          style={{
+            position: 'relative',
+            minWidth: 220,
+            flex: '1 1 220px',
+            maxWidth: 320,
+            marginLeft: 'auto',
+          }}
+        >
+          <Search
+            size={16}
             style={{
-              background:
-                filter === f.v ? 'var(--ios-blue)' : 'var(--ios-gray6)',
-              color: filter === f.v ? '#fff' : 'var(--ios-text2)',
+              position: 'absolute',
+              left: 12,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--ios-gray)',
             }}
-          >
-            {f.l}
-          </button>
-        ))}
+          />
+          <input
+            className="input"
+            placeholder="Fayl yoki hujjat qidirish..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: 36 }}
+          />
+        </div>
       </div>
 
+      {/* Loading skeleton */}
       {loading && (
-        <div className="muted" style={{ padding: 40, textAlign: 'center' }}>
-          Yuklanmoqda...
+        <div className="mb-4">
+          <TableSkeleton rows={4} cols={4} />
         </div>
       )}
 
@@ -920,219 +1022,225 @@ export default function Documents() {
         </div>
       )}
 
-      {/* ============================================ */}
-      {/* QORALAMALAR BO'LIMI — YANGI */}
-      {/* ============================================ */}
-      {!loading && filteredMyDocs.filter((d) => d.status === 'draft').length > 0 && (
-        <div
-          className="card mb-4"
-          style={{
-            border: '2px dashed #FF9500',
-            background: 'rgba(255,149,0,0.03)',
-          }}
-        >
-          <div className="between mb-3">
-            <div
-              className="card-title"
-              style={{
-                margin: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: '#B36B00',
-              }}
-            >
-              <FileText size={14} />
-              Qoralamalar ({filteredMyDocs.filter((d) => d.status === 'draft').length})
+      {/* Qoralamalar bo'limi */}
+      {!loading &&
+        filteredMyDocs.filter((d) => d.status === 'draft').length > 0 && (
+          <div
+            className="card mb-4"
+            style={{
+              border: '2px dashed #FF9500',
+              background: 'rgba(255,149,0,0.03)',
+            }}
+          >
+            <div className="between mb-3">
+              <div
+                className="card-title"
+                style={{
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  color: '#B36B00',
+                }}
+              >
+                <FileText size={14} />
+                Qoralamalar (
+                {filteredMyDocs.filter((d) => d.status === 'draft').length})
+              </div>
+              <Badge color="orange">Yuborilmagan</Badge>
             </div>
-            <Badge color="orange">Yuborilmagan</Badge>
-          </div>
-          <div className="list" style={{ boxShadow: 'none', background: 'transparent' }}>
-            {filteredMyDocs
-              .filter((d) => d.status === 'draft')
-              .map((d) => (
-                <div
-                  key={d.id}
-                  className="list-item"
-                  style={{
-                    background: '#fff',
-                    borderRadius: 12,
-                    marginBottom: 8,
-                    border: '1px solid rgba(255,149,0,0.2)',
-                  }}
-                >
-                  <div
-                    className="list-icon"
-                    style={{
-                      background: 'rgba(255,149,0,0.12)',
-                      color: '#FF9500',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <FileText size={18} />
-                  </div>
-                  <div
-                    className="list-body"
-                    onClick={() => setDocDetail(d)}
-                  >
-                    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                      <b>{d.number}</b>
-                      <Badge color="gray">Qoralama</Badge>
-                    </div>
-                    <span>
-                      {d.typeLabel} · {d.recipients?.length || 0} qabul qiluvchi
-                      {d.files?.length ? ` · ${d.files.length} fayl` : ''}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--ios-gray)',
-                        marginTop: 4,
-                        display: 'block',
-                      }}
-                    >
-                      {d.summary?.slice(0, 80)}
-                      {d.summary?.length > 80 ? '…' : ''}
-                    </span>
-                  </div>
-
-                  {/* Qoralama uchun amallar */}
-                  <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
-                    <button
-                      className="icon-btn"
-                      onClick={() => setDocDetail(d)}
-                      title="Ko‘rish"
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      className="icon-btn"
-                      onClick={() => setConfirmSendDraft(d)}
-                      title="Yuborish"
-                      style={{
-                        background: 'rgba(0,122,255,0.1)',
-                        color: '#007AFF',
-                      }}
-                    >
-                      <Send size={16} />
-                    </button>
-                    <button
-                      className="icon-btn"
-                      onClick={() => setConfirmDeleteDraft(d)}
-                      title="O‘chirish"
-                      style={{
-                        background: 'rgba(255,59,48,0.1)',
-                        color: '#FF3B30',
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Men yuborgan hujjatlar */}
-      {!loading && filteredMyDocs.filter((d) => d.status !== 'draft').length > 0 && (
-        <div className="card mb-4">
-          <div className="between mb-3">
             <div
-              className="card-title"
-              style={{
-                margin: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
+              className="list"
+              style={{ boxShadow: 'none', background: 'transparent' }}
             >
-              <Send size={14} />
-              Men yuborgan hujjatlar (
-              {filteredMyDocs.filter((d) => d.status !== 'draft').length})
-            </div>
-          </div>
-          <div className="list" style={{ boxShadow: 'none' }}>
-            {filteredMyDocs
-              .filter((d) => d.status !== 'draft')
-              .map((d) => {
-                const st = DOC_STATUS[d.status] || DOC_STATUS.sent;
-                return (
+              {filteredMyDocs
+                .filter((d) => d.status === 'draft')
+                .map((d) => (
                   <div
                     key={d.id}
                     className="list-item"
-                    onClick={() => setDocDetail(d)}
+                    style={{
+                      background: '#fff',
+                      borderRadius: 12,
+                      marginBottom: 8,
+                      border: '1px solid rgba(255,149,0,0.2)',
+                    }}
                   >
                     <div
                       className="list-icon"
                       style={{
-                        background:
-                          d.status === 'approved'
-                            ? 'rgba(52,199,89,0.12)'
-                            : d.status === 'returned' || d.status === 'rejected'
-                            ? 'rgba(255,59,48,0.12)'
-                            : 'rgba(0,122,255,0.1)',
-                        color:
-                          d.status === 'approved'
-                            ? '#34C759'
-                            : d.status === 'returned' || d.status === 'rejected'
-                            ? '#FF3B30'
-                            : '#007AFF',
+                        background: 'rgba(255,149,0,0.12)',
+                        color: '#FF9500',
                         flexShrink: 0,
                       }}
                     >
                       <FileText size={18} />
                     </div>
-                    <div className="list-body">
+                    <div className="list-body" onClick={() => setDocDetail(d)}>
                       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                         <b>{d.number}</b>
-                        <Badge color={st.color}>{st.label}</Badge>
+                        <Badge color="gray">Qoralama</Badge>
                       </div>
                       <span>
-                        {d.typeLabel} · {d.recipients.length} qabul qiluvchi ·{' '}
-                        {timeAgo(d.createdAt)}
+                        {d.typeLabel} · {d.recipients?.length || 0} qabul
+                        qiluvchi
+                        {d.files?.length ? ` · ${d.files.length} fayl` : ''}
                       </span>
-                      {d.returnReason && (
-                        <div
-                          style={{
-                            marginTop: 6,
-                            padding: '6px 10px',
-                            background: '#FFEBEA',
-                            borderRadius: 8,
-                            fontSize: 12.5,
-                            color: '#B22',
-                          }}
-                        >
-                          <b>↩ {d.returnedByName}:</b>{' '}
-                          {d.returnReason.slice(0, 100)}
-                        </div>
-                      )}
-                      {d.rejectReason && (
-                        <div
-                          style={{
-                            marginTop: 6,
-                            padding: '6px 10px',
-                            background: '#FFEBEA',
-                            borderRadius: 8,
-                            fontSize: 12.5,
-                            color: '#B22',
-                          }}
-                        >
-                          <b>❌ {d.rejectedByName}:</b>{' '}
-                          {d.rejectReason.slice(0, 100)}
-                        </div>
-                      )}
+                      <span
+                        style={{
+                          fontSize: 12,
+                          color: 'var(--ios-gray)',
+                          marginTop: 4,
+                          display: 'block',
+                        }}
+                      >
+                        {d.summary?.slice(0, 80)}
+                        {d.summary?.length > 80 ? '…' : ''}
+                      </span>
                     </div>
-                    <Eye
-                      size={16}
-                      style={{ color: 'var(--ios-gray3)', flexShrink: 0 }}
-                    />
+
+                    <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                      <button
+                        className="icon-btn"
+                        onClick={() => setDocDetail(d)}
+                        title="Ko‘rish"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        onClick={() => setConfirmSendDraft(d)}
+                        title="Yuborish"
+                        style={{
+                          background: 'rgba(0,122,255,0.1)',
+                          color: '#007AFF',
+                        }}
+                      >
+                        <Send size={16} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        onClick={() => setConfirmDeleteDraft(d)}
+                        title="O‘chirish"
+                        style={{
+                          background: 'rgba(255,59,48,0.1)',
+                          color: '#FF3B30',
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-                );
-              })}
+                ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+      {/* Men yuborgan hujjatlar */}
+      {!loading &&
+        filteredMyDocs.filter((d) => d.status !== 'draft').length > 0 && (
+          <div className="card mb-4">
+            <div className="between mb-3">
+              <div
+                className="card-title"
+                style={{
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Send size={14} />
+                Men yuborgan hujjatlar (
+                {filteredMyDocs.filter((d) => d.status !== 'draft').length})
+              </div>
+            </div>
+            <div className="list" style={{ boxShadow: 'none' }}>
+              {filteredMyDocs
+                .filter((d) => d.status !== 'draft')
+                .map((d) => {
+                  const st = DOC_STATUS[d.status] || DOC_STATUS.sent;
+                  return (
+                    <div
+                      key={d.id}
+                      className="list-item"
+                      onClick={() => setDocDetail(d)}
+                    >
+                      <div
+                        className="list-icon"
+                        style={{
+                          background:
+                            d.status === 'approved'
+                              ? 'rgba(52,199,89,0.12)'
+                              : d.status === 'returned' ||
+                                d.status === 'rejected'
+                              ? 'rgba(255,59,48,0.12)'
+                              : 'rgba(0,122,255,0.1)',
+                          color:
+                            d.status === 'approved'
+                              ? '#34C759'
+                              : d.status === 'returned' ||
+                                d.status === 'rejected'
+                              ? '#FF3B30'
+                              : '#007AFF',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <FileText size={18} />
+                      </div>
+                      <div className="list-body">
+                        <div
+                          className="row"
+                          style={{ gap: 8, flexWrap: 'wrap' }}
+                        >
+                          <b>{d.number}</b>
+                          <Badge color={st.color}>{st.label}</Badge>
+                        </div>
+                        <span>
+                          {d.typeLabel} · {d.recipients.length} qabul qiluvchi
+                          · {timeAgo(d.createdAt)}
+                        </span>
+                        {d.returnReason && (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              padding: '6px 10px',
+                              background: '#FFEBEA',
+                              borderRadius: 8,
+                              fontSize: 12.5,
+                              color: '#B22',
+                            }}
+                          >
+                            <b>↩ {d.returnedByName}:</b>{' '}
+                            {d.returnReason.slice(0, 100)}
+                          </div>
+                        )}
+                        {d.rejectReason && (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              padding: '6px 10px',
+                              background: '#FFEBEA',
+                              borderRadius: 8,
+                              fontSize: 12.5,
+                              color: '#B22',
+                            }}
+                          >
+                            <b>❌ {d.rejectedByName}:</b>{' '}
+                            {d.rejectReason.slice(0, 100)}
+                          </div>
+                        )}
+                      </div>
+                      <Eye
+                        size={16}
+                        style={{ color: 'var(--ios-gray3)', flexShrink: 0 }}
+                      />
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
       {/* Mening fayllarim */}
       {!loading && filteredMyFiles.length > 0 && (
@@ -1277,9 +1385,7 @@ export default function Documents() {
         />
       )}
 
-      {/* ============================================ */}
-      {/* HUJJAT TAFSILOTI MODALI */}
-      {/* ============================================ */}
+      {/* Hujjat tafsiloti modali */}
       {docDetail && (
         <Modal
           title={docDetail.number}
@@ -1289,8 +1395,7 @@ export default function Documents() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(140px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
                 gap: 10,
                 width: '100%',
               }}
@@ -1303,26 +1408,25 @@ export default function Documents() {
                 Yopish
               </Button>
 
-              {/* QORALAMA UCHUN: yuborish va o'chirish */}
-              {docDetail.status === 'draft' && docDetail.createdBy === user.id && (
-                <>
-                  <Button
-                    variant="danger"
-                    onClick={() => setConfirmDeleteDraft(docDetail)}
-                    style={{ width: '100%' }}
-                  >
-                    <Trash2 size={14} /> O‘chirish
-                  </Button>
-                  <Button
-                    onClick={() => setConfirmSendDraft(docDetail)}
-                    style={{ width: '100%' }}
-                  >
-                    <Send size={14} /> Yuborish
-                  </Button>
-                </>
-              )}
+              {docDetail.status === 'draft' &&
+                docDetail.createdBy === user.id && (
+                  <>
+                    <Button
+                      variant="danger"
+                      onClick={() => setConfirmDeleteDraft(docDetail)}
+                      style={{ width: '100%' }}
+                    >
+                      <Trash2 size={14} /> O‘chirish
+                    </Button>
+                    <Button
+                      onClick={() => setConfirmSendDraft(docDetail)}
+                      style={{ width: '100%' }}
+                    >
+                      <Send size={14} /> Yuborish
+                    </Button>
+                  </>
+                )}
 
-              {/* KELGAN HUJJAT UCHUN: tasdiqlash/qaytarish/bekor */}
               {docDetail.status === 'sent' &&
                 docDetail.createdBy !== user.id &&
                 (canApprove || canReturn || canReject) && (
@@ -1359,12 +1463,8 @@ export default function Documents() {
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Holat */}
             <div>
-              <div
-                className="muted"
-                style={{ fontSize: 12, marginBottom: 4 }}
-              >
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                 Holat
               </div>
               <Badge
@@ -1376,13 +1476,9 @@ export default function Documents() {
               </Badge>
             </div>
 
-            {/* Yuboruvchi */}
             {docDetail.createdByOrg && (
               <div>
-                <div
-                  className="muted"
-                  style={{ fontSize: 12, marginBottom: 4 }}
-                >
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                   Yuboruvchi
                 </div>
                 <div className="row" style={{ gap: 8, fontSize: 13.5 }}>
@@ -1392,12 +1488,8 @@ export default function Documents() {
               </div>
             )}
 
-            {/* Qisqacha mazmuni */}
             <div>
-              <div
-                className="muted"
-                style={{ fontSize: 12, marginBottom: 4 }}
-              >
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                 Qisqacha mazmuni
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.5 }}>
@@ -1405,13 +1497,9 @@ export default function Documents() {
               </div>
             </div>
 
-            {/* Heshteglar */}
             {docDetail.hashtags?.length > 0 && (
               <div>
-                <div
-                  className="muted"
-                  style={{ fontSize: 12, marginBottom: 6 }}
-                >
+                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
                   Heshteglar
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1433,13 +1521,9 @@ export default function Documents() {
               </div>
             )}
 
-            {/* Qabul qiluvchilar */}
             {docDetail.recipients?.length > 0 && (
               <div>
-                <div
-                  className="muted"
-                  style={{ fontSize: 12, marginBottom: 6 }}
-                >
+                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
                   Qabul qiluvchilar ({docDetail.recipients.length})
                 </div>
                 <div
@@ -1509,13 +1593,9 @@ export default function Documents() {
               </div>
             )}
 
-            {/* Biriktirilgan fayllar — bosiladigan */}
             {docDetail.files?.length > 0 && (
               <div>
-                <div
-                  className="muted"
-                  style={{ fontSize: 12, marginBottom: 6 }}
-                >
+                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
                   Biriktirilgan fayllar ({docDetail.files.length})
                 </div>
                 <div
@@ -1606,7 +1686,6 @@ export default function Documents() {
               </div>
             )}
 
-            {/* Tasdiqlangan / Qaytarilgan / Bekor qilingan bloklar */}
             {docDetail.status === 'approved' && docDetail.approvedByName && (
               <div
                 style={{
@@ -1718,13 +1797,9 @@ export default function Documents() {
               </div>
             )}
 
-            {/* O'qiganlar */}
             {docDetail.readBy?.length > 0 && (
               <div>
-                <div
-                  className="muted"
-                  style={{ fontSize: 12, marginBottom: 6 }}
-                >
+                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
                   O‘qiganlar ({docDetail.readBy.length})
                 </div>
                 <div
@@ -1755,7 +1830,6 @@ export default function Documents() {
               </div>
             )}
 
-            {/* Meta */}
             <div
               style={{
                 display: 'grid',
@@ -1833,8 +1907,8 @@ export default function Documents() {
             >
               <Send size={16} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                Yuborilgandan so‘ng hujjat qabul qiluvchilarga yetib boradi
-                va tahrirlab bo‘lmaydi.
+                Yuborilgandan so‘ng hujjat qabul qiluvchilarga yetib boradi va
+                tahrirlab bo‘lmaydi.
               </div>
             </div>
             <div>
@@ -1914,10 +1988,7 @@ export default function Documents() {
               alignItems: 'flex-start',
             }}
           >
-            <AlertTriangle
-              size={16}
-              style={{ flexShrink: 0, marginTop: 1 }}
-            />
+            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
               <b>Diqqat!</b> Bu amalni ortga qaytarib bo‘lmaydi. Qoralama va
               unga biriktirilgan fayllar butunlay o‘chiriladi.
@@ -1926,7 +1997,7 @@ export default function Documents() {
         </Modal>
       )}
 
-      {/* Harakat modali (kelgan hujjatlar uchun) */}
+      {/* Harakat modali */}
       {actionDoc && actionType && (
         <Modal
           title={
@@ -2013,10 +2084,7 @@ export default function Documents() {
 
             {actionType !== 'approve' && (
               <div>
-                <div
-                  className="muted"
-                  style={{ fontSize: 12, marginBottom: 6 }}
-                >
+                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
                   Tez tanlash:
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -2094,7 +2162,7 @@ export default function Documents() {
         </Modal>
       )}
 
-      {/* O'chirish modali (mening fayllarim) */}
+      {/* O'chirish modali */}
       {confirmDelete && (
         <Modal
           title="Faylni o‘chirish"

@@ -31,7 +31,6 @@ export function deleteDoc(id) {
   const list = listDocs().filter((d) => d.id !== id);
   localStorage.setItem(KEY, JSON.stringify(list));
 }
-
 export function genDocNumber(type) {
   const prefix =
     { kiruvchi: 'KIR', chiquvchi: 'CHIQ', murojaat: 'MUR', ichki: 'ICH' }[type] ||

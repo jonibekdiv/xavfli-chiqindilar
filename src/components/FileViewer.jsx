@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import { X, Download, Save, Pencil, Eye } from 'lucide-react';
 import { Button } from './UI.jsx';
+import { SafeHtml } from './SafeHtml.jsx';
 import { getFile } from '../utils/fileStore.js';
 
 function getKind(ext, mime = '') {
@@ -16,24 +17,32 @@ function getKind(ext, mime = '') {
   if (ext === 'csv') return 'csv';
   if (ext === 'docx') return 'docx';
   if (ext === 'doc') return 'doc';
-  if (['txt', 'md', 'log'].includes(ext) || mime.startsWith('text/')) return 'text';
+  if (['txt', 'md', 'log'].includes(ext) || mime.startsWith('text/'))
+    return 'text';
   return 'other';
 }
 
 function downloadBlob(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 100);
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch (err) {
+    console.error('Yuklab olishda xato:', err);
+  }
 }
 
 function ExcelEditor({ value, onChange, editable }) {
   const aoa = value.aoa || [];
-  const maxCols = Math.max(1, ...aoa.map((r) => (Array.isArray(r) ? r.length : 0)));
+  const maxCols = Math.max(
+    1,
+    ...aoa.map((r) => (Array.isArray(r) ? r.length : 0))
+  );
 
   const updateCell = (r, c, v) => {
     const next = aoa.map((row) => [...row]);
@@ -99,7 +108,6 @@ export default function FileViewer({ file, onClose }) {
     let mounted = true;
     (async () => {
       try {
-        // ✅ Blob'ni har doim IndexedDB'dan olamiz (xavfsizroq)
         let b = file.blob;
         if (!b || !(b instanceof Blob)) {
           const stored = await getFile(file.id);
@@ -136,6 +144,7 @@ export default function FileViewer({ file, onClose }) {
       mounted = false;
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
+    // eslint-disable-next-line
   }, [file, kind]);
 
   const downloadOriginal = () => {
@@ -160,7 +169,10 @@ export default function FileViewer({ file, onClose }) {
         const newName = file.name.replace(/\.docx$/i, '.doc');
         downloadBlob(new Blob([html], { type: 'application/msword' }), newName);
       } else if (kind === 'text') {
-        downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), file.name);
+        downloadBlob(
+          new Blob([content], { type: 'text/plain;charset=utf-8' }),
+          file.name
+        );
       }
     } catch (e) {
       alert('Saqlashda xatolik: ' + e.message);
@@ -265,15 +277,23 @@ export default function FileViewer({ file, onClose }) {
                   editable={mode === 'edit'}
                 />
               )}
-              {kind === 'docx' && (
+
+              {/* DOCX — VIEW MODE (XSS himoyalangan) */}
+              {kind === 'docx' && mode !== 'edit' && (
+                <SafeHtml html={content} className="docx-view" />
+              )}
+
+              {/* DOCX — EDIT MODE */}
+              {kind === 'docx' && mode === 'edit' && (
                 <div
                   className="docx-view"
-                  contentEditable={mode === 'edit'}
+                  contentEditable
                   suppressContentEditableWarning
                   onBlur={(e) => setContent(e.currentTarget.innerHTML)}
                   dangerouslySetInnerHTML={{ __html: content }}
                 />
               )}
+
               {kind === 'text' && (
                 <textarea
                   className="text-editor"
